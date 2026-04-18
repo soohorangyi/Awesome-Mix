@@ -373,11 +373,7 @@ function buildPanelHTML() {
                     <button class="fm429-btn primary" id="fm429-play-btn">PLAY</button>
                     <button class="fm429-btn stop" id="fm429-stop-btn" style="display:none;">■ STOP</button>
                 </div>
-                <div class="fm429-vol-row">
-                    <span class="fm429-vol-label">VOL</span>
-                    <input class="fm429-slider" id="fm429-vol-slider" type="range" min="0" max="100" value="${s.volume || 70}">
-                    <span class="fm429-vol-val" id="fm429-vol-val">${s.volume || 70}</span>
-                </div>
+
             </div>
 
             <div class="fm429-tab-pane" id="fm429-pane-mail">
@@ -464,14 +460,6 @@ function bindPanelEvents() {
     });
 
     $('#fm429-stop-btn').on('click', stopYoutube);
-
-    $('#fm429-vol-slider').on('input', function () {
-        const vol = parseInt($(this).val());
-        getSettings().volume = vol;
-        $('#fm429-vol-val').text(vol);
-        setYoutubeVolume(vol);
-        saveSettingsDebounced();
-    });
 
     $('#fm429-interval-select').on('change', function () {
         getSettings().saeyon_interval = $(this).val();
