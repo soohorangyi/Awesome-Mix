@@ -560,11 +560,15 @@ function applyPosition(pos) {
     if (!btn || !panel) return;
 
     if (pos === 'right') {
-        btn.style.left   = '';  btn.style.right  = '8px';
-        panel.style.left = '';  panel.style.right = '8px';
+        btn.style.removeProperty('left');
+        btn.style.setProperty('right', '8px');
+        panel.style.removeProperty('left');
+        panel.style.setProperty('right', '8px');
     } else {
-        btn.style.right  = '';  btn.style.left   = '8px';
-        panel.style.right = ''; panel.style.left  = '8px';
+        btn.style.removeProperty('right');
+        btn.style.setProperty('left', '8px');
+        panel.style.removeProperty('right');
+        panel.style.setProperty('left', '8px');
     }
 }
 
