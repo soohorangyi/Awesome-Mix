@@ -147,7 +147,7 @@ function escapeHtml(str) {
 }
 
 // ── 서버 URL (배포 후 본인 Vercel URL로 교체) ────────────────
-const FM429_SERVER = 'https://fm429-server-v2.vercel.app';
+const FM429_SERVER = 'https://fm429-server.vercel.app';
 
 // ── YouTube (프록시 서버 → <audio> 재생) ─────────────────────
 function loadYoutube(videoId) {
