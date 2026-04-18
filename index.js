@@ -146,35 +146,32 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ── 서버 URL (배포 후 본인 Vercel URL로 교체) ────────────────
-const FM429_SERVER = 'https://fm429-server.vercel.app';
-
-// ── YouTube (프록시 서버 → <audio> 재생) ─────────────────────
+// ── YouTube (iframe embed 방식) ──────────────────────────────
 function loadYoutube(videoId) {
-    const audioEl = document.getElementById('fm429-audio');
-    if (!audioEl) return;
+    const player = document.getElementById('fm429-yt-player');
+    if (!player) return;
 
-    const proxyUrl = `${FM429_SERVER}/api/audio?v=${videoId}`;
+    player.innerHTML = `<iframe
+        id="fm429-yt-iframe"
+        src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1"
+        allow="autoplay; encrypted-media; picture-in-picture"
+        allowfullscreen
+        frameborder="0"
+        style="width:100%;height:100%;display:block;border:0;">
+    </iframe>`;
 
-    audioEl.src = proxyUrl;
-    audioEl.load();
-
-    audioEl.play().then(() => {
-        isPlaying = true;
-        currentVideoId = videoId;
-        updatePlayUI();
-    }).catch(err => {
-        console.warn('[FM 42.9] 재생 실패:', err);
-        toastr.error('재생에 실패했습니다. 서버 URL을 확인해주세요.', 'FM 42.9');
-    });
+    isPlaying = true;
+    currentVideoId = videoId;
+    updatePlayUI();
 }
 
 function stopYoutube() {
-    const audioEl = document.getElementById('fm429-audio');
-    if (audioEl) {
-        audioEl.pause();
-        audioEl.src = '';
-    }
+    const player = document.getElementById('fm429-yt-player');
+    if (player) player.innerHTML = `<div class="fm429-player-placeholder" id="fm429-player-placeholder">
+        <div class="fm429-placeholder-icon">▶</div>
+        <div class="fm429-placeholder-text">URL 입력 후 PLAY</div>
+        <div class="fm429-placeholder-sub">유튜브 embed 허용 영상만 재생됩니다</div>
+    </div>`;
     isPlaying = false;
     currentVideoId = null;
     updatePlayUI();
@@ -329,8 +326,6 @@ function onMessageReceived() {
 function buildPanelHTML() {
     const s = getSettings();
     return `
-    <audio id="fm429-audio" preload="none"></audio>
-
     <button id="fm429-toggle-btn" title="FM 42.9 라디오">
         <span class="fm429-btn-dot"></span>
         <span class="fm429-btn-label">FM</span>
