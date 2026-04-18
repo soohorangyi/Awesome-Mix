@@ -146,31 +146,79 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ── YouTube (iframe embed 방식) ──────────────────────────────
+// ── YouTube IFrame Player API ────────────────────────────────
+let ytPlayer = null;
+let ytReady = false;
+
+function loadYoutubeAPI() {
+    if (document.getElementById('fm429-yt-api')) return;
+    const tag = document.createElement('script');
+    tag.id = 'fm429-yt-api';
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+}
+
+// 유튜브 API 준비되면 자동 호출되는 전역 콜백
+window.onYouTubeIframeAPIReady = function() {
+    ytReady = true;
+    // 대기 중인 videoId 있으면 바로 재생
+    if (window.__fm429_pendingVideoId) {
+        createYTPlayer(window.__fm429_pendingVideoId);
+        window.__fm429_pendingVideoId = null;
+    }
+};
+
+function createYTPlayer(videoId) {
+    // 기존 플레이어 제거
+    const container = document.getElementById('fm429-yt-player');
+    if (!container) return;
+    container.innerHTML = '<div id="fm429-yt-iframe"></div>';
+
+    ytPlayer = new YT.Player('fm429-yt-iframe', {
+        width: '100%',
+        height: '100%',
+        videoId: videoId,
+        playerVars: {
+            autoplay: 1,
+            playsinline: 1,
+            rel: 0,
+        },
+        events: {
+            onReady: (e) => {
+                e.target.playVideo();
+                isPlaying = true;
+                currentVideoId = videoId;
+                updatePlayUI();
+            },
+            onError: (e) => {
+                const msgs = {2:'잘못된 영상 ID', 5:'HTML5 오류', 100:'영상 없음', 101:'embed 차단됨', 150:'embed 차단됨'};
+                const msg = msgs[e.data] || `오류 코드 ${e.data}`;
+                toastr.error(`재생 실패: ${msg}`, 'FM 42.9');
+                stopYoutube();
+            },
+        }
+    });
+}
+
 function loadYoutube(videoId) {
-    const player = document.getElementById('fm429-yt-player');
-    if (!player) return;
-
-    player.innerHTML = `<iframe
-        id="fm429-yt-iframe"
-        src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1"
-        allow="autoplay; encrypted-media; picture-in-picture"
-        allowfullscreen
-        frameborder="0"
-        style="width:100%;height:100%;display:block;border:0;">
-    </iframe>`;
-
-    isPlaying = true;
-    currentVideoId = videoId;
-    updatePlayUI();
+    if (!ytReady) {
+        window.__fm429_pendingVideoId = videoId;
+        loadYoutubeAPI();
+    } else {
+        createYTPlayer(videoId);
+    }
 }
 
 function stopYoutube() {
-    const player = document.getElementById('fm429-yt-player');
-    if (player) player.innerHTML = `<div class="fm429-player-placeholder" id="fm429-player-placeholder">
+    if (ytPlayer) {
+        try { ytPlayer.stopVideo(); } catch(_) {}
+        ytPlayer = null;
+    }
+    const container = document.getElementById('fm429-yt-player');
+    if (container) container.innerHTML = `<div class="fm429-player-placeholder" id="fm429-player-placeholder">
         <div class="fm429-placeholder-icon">▶</div>
         <div class="fm429-placeholder-text">URL 입력 후 PLAY</div>
-        <div class="fm429-placeholder-sub">유튜브 embed 허용 영상만 재생됩니다</div>
+        <div class="fm429-placeholder-sub">유튜브 앱에서 퍼가기 허용된 영상</div>
     </div>`;
     isPlaying = false;
     currentVideoId = null;
