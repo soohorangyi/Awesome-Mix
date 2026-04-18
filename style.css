@@ -431,55 +431,7 @@
     100% { transform: translateX(-60%); }
 }
 
-/* ── Volume ── */
-.fm429-vol-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
 
-.fm429-vol-label {
-    font-family: var(--fm-font-pixel);
-    font-size: 7px;
-    color: var(--fm-border);
-    letter-spacing: 1.5px;
-    min-width: 24px;
-}
-
-.fm429-slider {
-    flex: 1;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 3px;
-    background: var(--fm-border-dim);
-    border-radius: 2px;
-    outline: none;
-}
-
-.fm429-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    background: var(--fm-red);
-    cursor: pointer;
-    border: 1.5px solid var(--fm-tan);
-    box-shadow: 0 0 6px rgba(163,29,29,0.5);
-    transition: box-shadow 0.2s;
-}
-
-.fm429-slider::-webkit-slider-thumb:hover {
-    box-shadow: 0 0 10px rgba(163,29,29,0.8);
-}
-
-.fm429-vol-val {
-    font-family: var(--fm-font-pixel);
-    font-size: 7px;
-    color: var(--fm-tan);
-    min-width: 26px;
-    text-align: right;
-    letter-spacing: 1px;
-}
 
 /* ══════════════════════════════════════════
    MAIL Tab
@@ -682,14 +634,57 @@
     position: absolute;
     inset: 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 6px;
+    text-align: center;
+    background: radial-gradient(ellipse at center, #1a0505 0%, #0a0000 100%);
+    transition: background 0.3s;
+}
+
+.fm429-player-placeholder.playing {
+    background: radial-gradient(ellipse at center, #2a0808 0%, #0a0000 100%);
+}
+
+.fm429-placeholder-icon {
+    font-size: 28px;
+    color: var(--fm-border);
+    line-height: 1;
+    transition: color 0.3s;
+}
+
+.fm429-player-placeholder.playing .fm429-placeholder-icon {
+    color: var(--fm-tan);
+    animation: fm429-wave 1s ease-in-out infinite;
+}
+
+.fm429-placeholder-text {
     font-family: var(--fm-font-pixel);
     font-size: 8px;
     color: var(--fm-border);
-    letter-spacing: 2px;
-    text-align: center;
-    background: radial-gradient(ellipse at center, #1a0505 0%, #0a0000 100%);
+    letter-spacing: 1.5px;
+    transition: color 0.3s;
+}
+
+.fm429-player-placeholder.playing .fm429-placeholder-text {
+    color: var(--fm-cream);
+}
+
+.fm429-placeholder-sub {
+    font-family: var(--fm-font-mono);
+    font-size: 9px;
+    color: var(--fm-border-dim);
+    letter-spacing: 0.5px;
+    max-width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.3s;
+}
+
+.fm429-player-placeholder.playing .fm429-placeholder-sub {
+    color: var(--fm-border);
 }
 
 /* status bar under player */
