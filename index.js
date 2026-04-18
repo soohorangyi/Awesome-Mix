@@ -146,43 +146,40 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ── YouTube (deeplink → 앱으로 열기) ─────────────────────────
+// ── 서버 URL (배포 후 본인 Vercel URL로 교체) ────────────────
+const FM429_SERVER = 'https://fm429-server-v2.vercel.app';
+
+// ── YouTube (프록시 서버 → <audio> 재생) ─────────────────────
 function loadYoutube(videoId) {
-    // 1순위: 유튜브 앱 딥링크 (모바일)
-    // 2순위: 브라우저 fallback
-    const appLink  = `youtube://watch?v=${videoId}`;
-    const webLink  = `https://www.youtube.com/watch?v=${videoId}`;
+    const audioEl = document.getElementById('fm429-audio');
+    if (!audioEl) return;
 
-    // 앱 딥링크 시도 — 설치되어 있으면 앱으로, 아니면 자동 fallback
-    const a = document.createElement('a');
-    a.href = appLink;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const proxyUrl = `${FM429_SERVER}/api/audio?v=${videoId}`;
 
-    // 500ms 후에도 페이지가 그대로면 앱 없는 것 → 브라우저로 열기
-    const t = setTimeout(() => {
-        window.open(webLink, '_blank');
-    }, 500);
+    audioEl.src = proxyUrl;
+    audioEl.load();
 
-    // 페이지가 blur(앱으로 전환됨)되면 타이머 취소
-    const onBlur = () => { clearTimeout(t); window.removeEventListener('blur', onBlur); };
-    window.addEventListener('blur', onBlur);
-
-    isPlaying = true;
-    currentVideoId = videoId;
-    updatePlayUI();
+    audioEl.play().then(() => {
+        isPlaying = true;
+        currentVideoId = videoId;
+        updatePlayUI();
+    }).catch(err => {
+        console.warn('[FM 42.9] 재생 실패:', err);
+        toastr.error('재생에 실패했습니다. 서버 URL을 확인해주세요.', 'FM 42.9');
+    });
 }
 
 function stopYoutube() {
-    // 딥링크 방식에선 앱을 직접 닫을 수 없으므로 상태만 초기화
+    const audioEl = document.getElementById('fm429-audio');
+    if (audioEl) {
+        audioEl.pause();
+        audioEl.src = '';
+    }
     isPlaying = false;
     currentVideoId = null;
     updatePlayUI();
 }
 
-// 딥링크 방식에선 볼륨 제어 불가 (앱 내부 볼륨은 기기 볼륨으로)
 function setYoutubeVolume(_vol) {}
 
 // ── Play UI ───────────────────────────────────────────────────
@@ -332,6 +329,8 @@ function onMessageReceived() {
 function buildPanelHTML() {
     const s = getSettings();
     return `
+    <audio id="fm429-audio" preload="none"></audio>
+
     <button id="fm429-toggle-btn" title="FM 42.9 라디오">
         <span class="fm429-btn-dot"></span>
         <span class="fm429-btn-label">FM</span>
