@@ -18,6 +18,7 @@ const defaultSettings = {
     message_counter: 0,
     last_url: '',
     apiProfile: '',
+    position: 'left',  // 'left' | 'right'
 };
 
 let isPlaying = false;
@@ -444,6 +445,7 @@ function buildPanelHTML() {
 
 // ── Settings Panel HTML ───────────────────────────────────────
 function buildSettingsHTML() {
+    const s = getSettings();
     return `
     <div id="fm429-settings-container">
         <div class="inline-drawer">
@@ -456,6 +458,22 @@ function buildSettingsHTML() {
                     <input type="checkbox" id="fm429-enabled-checkbox">
                     <span>FM 42.9 활성화</span>
                 </label>
+
+                <div style="margin-bottom:4px; font-size:11px; opacity:0.6; letter-spacing:0.5px;">
+                    패널 위치
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="radio" name="fm429-position" id="fm429-pos-left"
+                               value="left" ${(s.position || 'left') === 'left' ? 'checked' : ''}>
+                        <span>◧ 좌측 상단</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="radio" name="fm429-position" id="fm429-pos-right"
+                               value="right" ${s.position === 'right' ? 'checked' : ''}>
+                        <span>◨ 우측 상단</span>
+                    </label>
+                </div>
 
                 <div style="margin-bottom:4px; font-size:11px; opacity:0.6; letter-spacing:0.5px;">
                     사연 생성 연결 프로필
@@ -522,10 +540,32 @@ function bindSettingsEvents() {
         saveSettingsDebounced();
     });
 
+    $(document).on('change', 'input[name="fm429-position"]', function () {
+        const pos = $(this).val();
+        getSettings().position = pos;
+        applyPosition(pos);
+        saveSettingsDebounced();
+    });
+
     $(document).on('change', '#fm429-profile-select', function () {
         getSettings().apiProfile = $(this).val();
         saveSettingsDebounced();
     });
+}
+
+// ── Position ──────────────────────────────────────────────────
+function applyPosition(pos) {
+    const btn   = document.getElementById('fm429-toggle-btn');
+    const panel = document.getElementById('fm429-panel');
+    if (!btn || !panel) return;
+
+    if (pos === 'right') {
+        btn.style.left   = '';  btn.style.right  = '8px';
+        panel.style.left = '';  panel.style.right = '8px';
+    } else {
+        btn.style.right  = '';  btn.style.left   = '8px';
+        panel.style.right = ''; panel.style.left  = '8px';
+    }
 }
 
 // ── Visibility ────────────────────────────────────────────────
@@ -546,6 +586,7 @@ function injectPanel() {
     bindPanelEvents();
     updatePlayUI();
     renderCards();
+    applyPosition(getSettings().position || 'left');
 }
 
 // ── Init ──────────────────────────────────────────────────────
