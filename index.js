@@ -146,29 +146,34 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ── YouTube (hidden iframe, background audio) ─────────────────
+// ── YouTube (visible embedded player) ────────────────────────
 function loadYoutube(videoId) {
-    const container = document.getElementById('fm429-iframe-container');
-    if (!container) return;
-    container.innerHTML = '';
+    const player = document.getElementById('fm429-yt-player');
+    if (!player) return;
 
-    const iframe = document.createElement('iframe');
-    iframe.id = 'fm429-yt-iframe';
-    iframe.width = '1';
-    iframe.height = '1';
-    iframe.allow = 'autoplay; encrypted-media';
-    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}&rel=0&playsinline=1`;
-    container.appendChild(iframe);
+    const vol = getSettings().volume ?? 70;
+    player.innerHTML = `
+        <iframe
+            id="fm429-yt-iframe"
+            width="100%" height="100%"
+            src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}&rel=0&playsinline=1"
+            allow="autoplay; encrypted-media; picture-in-picture"
+            allowfullscreen
+            frameborder="0"
+            style="border:0; display:block; width:100%; height:100%;"
+        ></iframe>`;
 
-    setTimeout(() => setYoutubeVolume(getSettings().volume || 70), 2000);
+    // 볼륨 초기 적용 (iframe 로드 후)
+    setTimeout(() => setYoutubeVolume(vol), 2500);
+
     isPlaying = true;
     currentVideoId = videoId;
     updatePlayUI();
 }
 
 function stopYoutube() {
-    const container = document.getElementById('fm429-iframe-container');
-    if (container) container.innerHTML = '';
+    const player = document.getElementById('fm429-yt-player');
+    if (player) player.innerHTML = `<div class="fm429-player-placeholder">— 대기 중 · FM 42.9 —</div>`;
     isPlaying = false;
     currentVideoId = null;
     updatePlayUI();
@@ -185,25 +190,21 @@ function setYoutubeVolume(vol) {
 
 // ── Play UI ───────────────────────────────────────────────────
 function updatePlayUI() {
-    const displayTitle = document.querySelector('.fm429-display-title');
-    const displaySub   = document.querySelector('.fm429-display-sub');
-    const signal       = document.getElementById('fm429-signal');
-    const playBtn      = document.getElementById('fm429-play-btn');
-    const stopBtn      = document.getElementById('fm429-stop-btn');
-    if (!displayTitle) return;
+    const signal    = document.getElementById('fm429-signal');
+    const playBtn   = document.getElementById('fm429-play-btn');
+    const stopBtn   = document.getElementById('fm429-stop-btn');
+    const statusBar = document.getElementById('fm429-status-bar');
 
     if (isPlaying && currentVideoId) {
-        displayTitle.innerHTML = `<span class="fm429-ticker">▶ youtu.be/${currentVideoId} &nbsp;— ON AIR —&nbsp; youtu.be/${currentVideoId}</span>`;
-        displaySub.textContent = `STREAMING · ${formatTime()}`;
         signal?.classList.add('playing');
-        if (playBtn) { playBtn.textContent = '재생 중'; playBtn.disabled = true; }
+        if (playBtn) { playBtn.textContent = 'PLAY'; playBtn.disabled = true; }
         if (stopBtn) stopBtn.style.display = '';
+        if (statusBar) statusBar.textContent = `ON AIR · ${formatTime()}`;
     } else {
-        displayTitle.textContent = '— 대기 중 —';
-        displaySub.textContent = 'STANDBY · FM 42.9';
         signal?.classList.remove('playing');
         if (playBtn) { playBtn.textContent = 'PLAY'; playBtn.disabled = false; }
         if (stopBtn) stopBtn.style.display = 'none';
+        if (statusBar) statusBar.textContent = 'STANDBY · FM 42.9';
     }
 }
 
@@ -321,8 +322,6 @@ function onMessageReceived() {
 function buildPanelHTML() {
     const s = getSettings();
     return `
-    <div id="fm429-iframe-container"></div>
-
     <button id="fm429-toggle-btn" title="FM 42.9 라디오">
         <span class="fm429-btn-dot"></span>
         <span class="fm429-btn-label">FM</span>
@@ -343,9 +342,12 @@ function buildPanelHTML() {
 
         <div class="fm429-content">
             <div class="fm429-tab-pane active" id="fm429-pane-play">
-                <div class="fm429-display">
-                    <div class="fm429-display-title">— 대기 중 —</div>
-                    <div class="fm429-display-sub">STANDBY · FM 42.9</div>
+                <!-- YouTube 플레이어 영역 -->
+                <div id="fm429-yt-player">
+                    <div class="fm429-player-placeholder">— 대기 중 · FM 42.9 —</div>
+                </div>
+                <div class="fm429-status-row">
+                    <span id="fm429-status-bar">STANDBY · FM 42.9</span>
                 </div>
                 <div class="fm429-label">YOUTUBE URL</div>
                 <div class="fm429-input-row">
