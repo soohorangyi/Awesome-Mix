@@ -30,7 +30,7 @@
 #fm429-toggle-btn {
     position: fixed;
     top: 48px;
-    left: 8px;  /* default; overridden by applyPosition() */
+    /* left/right은 applyPosition()이 인라인 스타일로 제어 */
     z-index: 9998;
     width: 54px;
     height: 30px;
@@ -80,7 +80,7 @@
 #fm429-panel {
     position: fixed;
     top: 84px;
-    left: 8px;  /* default; overridden by applyPosition() */
+    /* left/right은 applyPosition()이 인라인 스타일로 제어 */
     z-index: 9997;
     width: var(--width);
     background: var(--white);
