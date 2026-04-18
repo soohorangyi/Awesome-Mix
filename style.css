@@ -30,7 +30,7 @@
 #fm429-toggle-btn {
     position: fixed;
     top: 48px;
-    left: 8px;
+    left: 8px;  /* default; overridden by applyPosition() */
     z-index: 9998;
     width: 54px;
     height: 30px;
@@ -80,7 +80,7 @@
 #fm429-panel {
     position: fixed;
     top: 84px;
-    left: 8px;
+    left: 8px;  /* default; overridden by applyPosition() */
     z-index: 9997;
     width: var(--width);
     background: var(--white);
