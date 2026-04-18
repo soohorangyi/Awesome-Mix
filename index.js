@@ -146,25 +146,29 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ── YouTube (visible embedded player) ────────────────────────
+// ── YouTube (deeplink → 앱으로 열기) ─────────────────────────
 function loadYoutube(videoId) {
-    const player = document.getElementById('fm429-yt-player');
-    if (!player) return;
+    // 1순위: 유튜브 앱 딥링크 (모바일)
+    // 2순위: 브라우저 fallback
+    const appLink  = `youtube://watch?v=${videoId}`;
+    const webLink  = `https://www.youtube.com/watch?v=${videoId}`;
 
-    const vol = getSettings().volume ?? 70;
-    player.innerHTML = `
-        <iframe
-            id="fm429-yt-iframe"
-            width="100%" height="100%"
-            src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}&rel=0&playsinline=1"
-            allow="autoplay; encrypted-media; picture-in-picture"
-            allowfullscreen
-            frameborder="0"
-            style="border:0; display:block; width:100%; height:100%;"
-        ></iframe>`;
+    // 앱 딥링크 시도 — 설치되어 있으면 앱으로, 아니면 자동 fallback
+    const a = document.createElement('a');
+    a.href = appLink;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 
-    // 볼륨 초기 적용 (iframe 로드 후)
-    setTimeout(() => setYoutubeVolume(vol), 2500);
+    // 500ms 후에도 페이지가 그대로면 앱 없는 것 → 브라우저로 열기
+    const t = setTimeout(() => {
+        window.open(webLink, '_blank');
+    }, 500);
+
+    // 페이지가 blur(앱으로 전환됨)되면 타이머 취소
+    const onBlur = () => { clearTimeout(t); window.removeEventListener('blur', onBlur); };
+    window.addEventListener('blur', onBlur);
 
     isPlaying = true;
     currentVideoId = videoId;
@@ -172,39 +176,45 @@ function loadYoutube(videoId) {
 }
 
 function stopYoutube() {
-    const player = document.getElementById('fm429-yt-player');
-    if (player) player.innerHTML = `<div class="fm429-player-placeholder">— 대기 중 · FM 42.9 —</div>`;
+    // 딥링크 방식에선 앱을 직접 닫을 수 없으므로 상태만 초기화
     isPlaying = false;
     currentVideoId = null;
     updatePlayUI();
 }
 
-function setYoutubeVolume(vol) {
-    const iframe = document.getElementById('fm429-yt-iframe');
-    if (!iframe) return;
-    iframe.contentWindow?.postMessage(
-        JSON.stringify({ event: 'command', func: 'setVolume', args: [vol] }),
-        '*'
-    );
-}
+// 딥링크 방식에선 볼륨 제어 불가 (앱 내부 볼륨은 기기 볼륨으로)
+function setYoutubeVolume(_vol) {}
 
 // ── Play UI ───────────────────────────────────────────────────
 function updatePlayUI() {
-    const signal    = document.getElementById('fm429-signal');
-    const playBtn   = document.getElementById('fm429-play-btn');
-    const stopBtn   = document.getElementById('fm429-stop-btn');
-    const statusBar = document.getElementById('fm429-status-bar');
+    const signal      = document.getElementById('fm429-signal');
+    const playBtn     = document.getElementById('fm429-play-btn');
+    const stopBtn     = document.getElementById('fm429-stop-btn');
+    const statusBar   = document.getElementById('fm429-status-bar');
+    const placeholder = document.getElementById('fm429-player-placeholder');
 
     if (isPlaying && currentVideoId) {
         signal?.classList.add('playing');
         if (playBtn) { playBtn.textContent = 'PLAY'; playBtn.disabled = true; }
         if (stopBtn) stopBtn.style.display = '';
         if (statusBar) statusBar.textContent = `ON AIR · ${formatTime()}`;
+        if (placeholder) {
+            placeholder.querySelector('.fm429-placeholder-icon').textContent = '♪';
+            placeholder.querySelector('.fm429-placeholder-text').textContent = '앱에서 재생 중';
+            placeholder.querySelector('.fm429-placeholder-sub').textContent = `youtu.be/${currentVideoId}`;
+            placeholder.classList.add('playing');
+        }
     } else {
         signal?.classList.remove('playing');
         if (playBtn) { playBtn.textContent = 'PLAY'; playBtn.disabled = false; }
         if (stopBtn) stopBtn.style.display = 'none';
         if (statusBar) statusBar.textContent = 'STANDBY · FM 42.9';
+        if (placeholder) {
+            placeholder.querySelector('.fm429-placeholder-icon').textContent = '▶';
+            placeholder.querySelector('.fm429-placeholder-text').textContent = 'URL 입력 후 PLAY';
+            placeholder.querySelector('.fm429-placeholder-sub').textContent = '유튜브 앱으로 열립니다';
+            placeholder.classList.remove('playing');
+        }
     }
 }
 
@@ -342,9 +352,13 @@ function buildPanelHTML() {
 
         <div class="fm429-content">
             <div class="fm429-tab-pane active" id="fm429-pane-play">
-                <!-- YouTube 플레이어 영역 -->
+                <!-- 상태 표시 영역 (딥링크 방식) -->
                 <div id="fm429-yt-player">
-                    <div class="fm429-player-placeholder">— 대기 중 · FM 42.9 —</div>
+                    <div class="fm429-player-placeholder" id="fm429-player-placeholder">
+                        <div class="fm429-placeholder-icon">▶</div>
+                        <div class="fm429-placeholder-text">URL 입력 후 PLAY</div>
+                        <div class="fm429-placeholder-sub">유튜브 앱으로 열립니다</div>
+                    </div>
                 </div>
                 <div class="fm429-status-row">
                     <span id="fm429-status-bar">STANDBY · FM 42.9</span>
