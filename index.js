@@ -18,13 +18,77 @@ const defaultSettings = {
     message_counter: 0,
     last_url: '',
     apiProfile: '',
-    position: 'left',  // 'left' | 'right'
+    position: 'left',   // 'left' | 'right'
+    language: 'ko',     // 'ko' | 'en'
 };
 
 let isPlaying = false;
 let currentVideoId = null;
 let panelOpen = false;
 let cardIndex = 0;
+
+// ── i18n ──────────────────────────────────────────────────────
+const I18N = {
+    ko: {
+        standby:        'STANDBY · FM 42.9',
+        onair:          'ON AIR',
+        urlPlaceholder: 'youtu.be/... 또는 youtube.com/watch?v=...',
+        urlLabel:       'YOUTUBE URL',
+        play:           'PLAY',
+        stop:           '■ STOP',
+        playingText:    '앱에서 재생 중',
+        urlHint:        '유튜브 앱으로 열립니다',
+        mailLabel:      '수신된 사연',
+        mailUnit:       '건',
+        emptyMsg:       '📡 아직 수신된 사연이 없어요.<br>채팅을 계속하면 사연이 도착합니다.',
+        saeyonLabel:    '사연',
+        deleteBtn:      '삭제',
+        deleteConfirm:  '이 사연을 삭제할까요?',
+        clearAll:       '전체 삭제',
+        clearConfirm:   '사연을 모두 삭제할까요?',
+        settingsTitle:  'FM 42.9 활성화',
+        posLabel:       '패널 위치',
+        posLeft:        '◧ 좌측 상단',
+        posRight:       '◨ 우측 상단',
+        profileLabel:   '사연 생성 연결 프로필',
+        profileDefault: '메인 프로필 사용 (기본)',
+        profileHint:    '별도 프로필을 지정하면 사연 생성 시 해당 프로필로 일시 전환 후<br>자동으로 원래 프로필로 복귀합니다.<br>지정하지 않으면 현재 메인 프로필을 그대로 사용합니다.',
+        langLabel:      '사연 언어',
+        badUrl:         '올바른 YouTube URL을 입력해주세요.',
+    },
+    en: {
+        standby:        'STANDBY · FM 42.9',
+        onair:          'ON AIR',
+        urlPlaceholder: 'youtu.be/... or youtube.com/watch?v=...',
+        urlLabel:       'YOUTUBE URL',
+        play:           'PLAY',
+        stop:           '■ STOP',
+        playingText:    'Playing in app',
+        urlHint:        'Opens in YouTube app',
+        mailLabel:      'MAIL',
+        mailUnit:       '',
+        emptyMsg:       '📡 No letters received yet.<br>Keep chatting and one will arrive.',
+        saeyonLabel:    'INTERVAL',
+        deleteBtn:      'Delete',
+        deleteConfirm:  'Delete this letter?',
+        clearAll:       'Clear all',
+        clearConfirm:   'Delete all letters?',
+        settingsTitle:  'Enable FM 42.9',
+        posLabel:       'Panel position',
+        posLeft:        '◧ Top left',
+        posRight:       '◨ Top right',
+        profileLabel:   'Letter-gen API profile',
+        profileDefault: 'Use main profile (default)',
+        profileHint:    'When set, FM 42.9 temporarily switches to this profile for letter generation, then restores the original.<br>Leave blank to use the current profile.',
+        langLabel:      'Letter language',
+        badUrl:         'Please enter a valid YouTube URL.',
+    },
+};
+
+function t(key) {
+    const lang = getSettings().language || 'ko';
+    return I18N[lang]?.[key] ?? I18N['ko'][key] ?? key;
+}
 
 // ── Settings ──────────────────────────────────────────────────
 function getSettings() {
@@ -42,7 +106,7 @@ function getSTContext() {
     return window.SillyTavern?.getContext() || {};
 }
 
-// ── API Profiles (gotcha 패턴) ────────────────────────────────
+// ── API Profiles ──────────────────────────────────────────────
 function getApiProfiles() {
     const profiles = [];
     try {
@@ -51,7 +115,6 @@ function getApiProfiles() {
             p.forEach(x => x?.name && profiles.push({ name: x.name, label: x.name }));
         }
     } catch (_) {}
-
     if (!profiles.length) {
         try {
             const p = extension_settings?.connection_profiles;
@@ -67,7 +130,6 @@ function populateProfileSelect() {
     const s = getSettings();
     const $sel = $('#fm429-profile-select');
     if (!$sel.length) return;
-
     $sel.find('option:not([value=""])').remove();
     getApiProfiles().forEach(({ name, label }) => {
         $sel.append(`<option value="${escapeHtml(name)}">${escapeHtml(label)}</option>`);
@@ -75,13 +137,12 @@ function populateProfileSelect() {
     if (s.apiProfile) $sel.val(s.apiProfile);
 }
 
-// ── LLM call (gotcha 패턴) ────────────────────────────────────
+// ── LLM call ──────────────────────────────────────────────────
 async function callLLM(prompt) {
     const context = getSTContext();
     const selectedProfile = getSettings().apiProfile;
     let previousProfile = null;
 
-    // 프로필 전환
     if (selectedProfile) {
         try {
             const p = extension_settings?.connectionManager?.profiles;
@@ -103,7 +164,6 @@ async function callLLM(prompt) {
     try {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
-        // 프로필 복원
         if (selectedProfile && previousProfile && context.executeSlashCommandsWithOptions) {
             try {
                 await context.executeSlashCommandsWithOptions(
@@ -147,22 +207,20 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ── YouTube IFrame Player API ────────────────────────────────
+// ── YouTube IFrame Player API ─────────────────────────────────
 let ytPlayer = null;
-let ytReady = false;
+let ytReady  = false;
 
 function loadYoutubeAPI() {
     if (document.getElementById('fm429-yt-api')) return;
     const tag = document.createElement('script');
-    tag.id = 'fm429-yt-api';
+    tag.id  = 'fm429-yt-api';
     tag.src = 'https://www.youtube.com/iframe_api';
     document.head.appendChild(tag);
 }
 
-// 유튜브 API 준비되면 자동 호출되는 전역 콜백
-window.onYouTubeIframeAPIReady = function() {
+window.onYouTubeIframeAPIReady = function () {
     ytReady = true;
-    // 대기 중인 videoId 있으면 바로 재생
     if (window.__fm429_pendingVideoId) {
         createYTPlayer(window.__fm429_pendingVideoId);
         window.__fm429_pendingVideoId = null;
@@ -170,20 +228,14 @@ window.onYouTubeIframeAPIReady = function() {
 };
 
 function createYTPlayer(videoId) {
-    // 기존 플레이어 제거
     const container = document.getElementById('fm429-yt-player');
     if (!container) return;
     container.innerHTML = '<div id="fm429-yt-iframe"></div>';
 
     ytPlayer = new YT.Player('fm429-yt-iframe', {
-        width: '100%',
-        height: '100%',
-        videoId: videoId,
-        playerVars: {
-            autoplay: 1,
-            playsinline: 1,
-            rel: 0,
-        },
+        width: '100%', height: '100%',
+        videoId,
+        playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
         events: {
             onReady: (e) => {
                 e.target.playVideo();
@@ -192,41 +244,32 @@ function createYTPlayer(videoId) {
                 updatePlayUI();
             },
             onError: (e) => {
-                const msgs = {2:'잘못된 영상 ID', 5:'HTML5 오류', 100:'영상 없음', 101:'embed 차단됨', 150:'embed 차단됨'};
-                const msg = msgs[e.data] || `오류 코드 ${e.data}`;
-                toastr.error(`재생 실패: ${msg}`, 'FM 42.9');
+                const msgs = { 2: '잘못된 영상 ID', 5: 'HTML5 오류', 100: '영상 없음', 101: 'embed 차단됨', 150: 'embed 차단됨' };
+                toastr.error(`재생 실패: ${msgs[e.data] || `오류 코드 ${e.data}`}`, 'FM 42.9');
                 stopYoutube();
             },
-        }
+        },
     });
 }
 
 function loadYoutube(videoId) {
-    if (!ytReady) {
-        window.__fm429_pendingVideoId = videoId;
-        loadYoutubeAPI();
-    } else {
-        createYTPlayer(videoId);
-    }
+    if (!ytReady) { window.__fm429_pendingVideoId = videoId; loadYoutubeAPI(); }
+    else createYTPlayer(videoId);
 }
 
 function stopYoutube() {
-    if (ytPlayer) {
-        try { ytPlayer.stopVideo(); } catch(_) {}
-        ytPlayer = null;
-    }
+    if (ytPlayer) { try { ytPlayer.stopVideo(); } catch (_) {} ytPlayer = null; }
     const container = document.getElementById('fm429-yt-player');
-    if (container) container.innerHTML = `<div class="fm429-player-placeholder" id="fm429-player-placeholder">
-        <div class="fm429-placeholder-icon">▶</div>
-        <div class="fm429-placeholder-text">URL 입력 후 PLAY</div>
-        <div class="fm429-placeholder-sub">유튜브 앱에서 퍼가기 허용된 영상</div>
-    </div>`;
+    if (container) container.innerHTML = `
+        <div class="fm429-player-placeholder" id="fm429-player-placeholder">
+            <div class="fm429-placeholder-icon">▶</div>
+            <div class="fm429-placeholder-text">${t('urlLabel')} →</div>
+            <div class="fm429-placeholder-sub">${t('urlHint')}</div>
+        </div>`;
     isPlaying = false;
     currentVideoId = null;
     updatePlayUI();
 }
-
-function setYoutubeVolume(_vol) {}
 
 // ── Play UI ───────────────────────────────────────────────────
 function updatePlayUI() {
@@ -238,24 +281,24 @@ function updatePlayUI() {
 
     if (isPlaying && currentVideoId) {
         signal?.classList.add('playing');
-        if (playBtn) { playBtn.textContent = 'PLAY'; playBtn.disabled = true; }
+        if (playBtn) { playBtn.textContent = t('play'); playBtn.disabled = true; }
         if (stopBtn) stopBtn.style.display = '';
-        if (statusBar) statusBar.textContent = `ON AIR · ${formatTime()}`;
+        if (statusBar) statusBar.textContent = `${t('onair')} · ${formatTime()}`;
         if (placeholder) {
             placeholder.querySelector('.fm429-placeholder-icon').textContent = '♪';
-            placeholder.querySelector('.fm429-placeholder-text').textContent = '앱에서 재생 중';
-            placeholder.querySelector('.fm429-placeholder-sub').textContent = `youtu.be/${currentVideoId}`;
+            placeholder.querySelector('.fm429-placeholder-text').textContent = t('playingText');
+            placeholder.querySelector('.fm429-placeholder-sub').textContent  = `youtu.be/${currentVideoId}`;
             placeholder.classList.add('playing');
         }
     } else {
         signal?.classList.remove('playing');
-        if (playBtn) { playBtn.textContent = 'PLAY'; playBtn.disabled = false; }
+        if (playBtn) { playBtn.textContent = t('play'); playBtn.disabled = false; }
         if (stopBtn) stopBtn.style.display = 'none';
-        if (statusBar) statusBar.textContent = 'STANDBY · FM 42.9';
+        if (statusBar) statusBar.textContent = t('standby');
         if (placeholder) {
             placeholder.querySelector('.fm429-placeholder-icon').textContent = '▶';
-            placeholder.querySelector('.fm429-placeholder-text').textContent = 'URL 입력 후 PLAY';
-            placeholder.querySelector('.fm429-placeholder-sub').textContent = '유튜브 앱으로 열립니다';
+            placeholder.querySelector('.fm429-placeholder-text').textContent = `${t('urlLabel')} →`;
+            placeholder.querySelector('.fm429-placeholder-sub').textContent  = t('urlHint');
             placeholder.classList.remove('playing');
         }
     }
@@ -265,18 +308,14 @@ function updatePlayUI() {
 function renderCards() {
     const container = document.getElementById('fm429-cards-container');
     if (!container) return;
-    const s = getSettings();
+    const s     = getSettings();
     const cards = s.saeyon_cards || [];
 
     const countEl = document.getElementById('fm429-mail-count');
-    if (countEl) countEl.textContent = `${cards.length}건`;
+    if (countEl) countEl.textContent = `${cards.length}${t('mailUnit')}`;
 
     if (cards.length === 0) {
-        container.innerHTML = `
-            <div class="fm429-empty">
-                📡 아직 수신된 사연이 없어요.<br>
-                채팅을 계속하면 사연이 도착합니다.
-            </div>`;
+        container.innerHTML = `<div class="fm429-empty">${t('emptyMsg')}</div>`;
         return;
     }
 
@@ -286,7 +325,10 @@ function renderCards() {
 
     container.innerHTML = `
         <div class="fm429-card">
-            <div class="fm429-card-from">${escapeHtml(card.from)}</div>
+            <div class="fm429-card-meta">
+                <span class="fm429-card-from">${escapeHtml(card.from)}</span>
+                <span class="fm429-card-time">${escapeHtml(card.time || '')}</span>
+            </div>
             <div class="fm429-card-body">${escapeHtml(card.body)}</div>
             ${card.dj ? `<div class="fm429-card-dj">💬 ${escapeHtml(card.dj)}</div>` : ''}
         </div>
@@ -294,45 +336,134 @@ function renderCards() {
             <button class="fm429-nav-btn" id="fm429-prev-btn" ${cardIndex === 0 ? 'disabled' : ''}>◄</button>
             <span class="fm429-card-index">${cardIndex + 1} / ${cards.length}</span>
             <button class="fm429-nav-btn" id="fm429-next-btn" ${cardIndex === cards.length - 1 ? 'disabled' : ''}>►</button>
+        </div>
+        <div class="fm429-card-actions">
+            <button class="fm429-btn fm429-delete-btn" id="fm429-delete-one">🗑 ${t('deleteBtn')}</button>
+            <button class="fm429-btn fm429-clear-btn"  id="fm429-clear-all">✕ ${t('clearAll')}</button>
         </div>`;
 
-    document.getElementById('fm429-prev-btn')?.addEventListener('click', () => { cardIndex--; renderCards(); });
-    document.getElementById('fm429-next-btn')?.addEventListener('click', () => { cardIndex++; renderCards(); });
+    document.getElementById('fm429-prev-btn')?.addEventListener('click',   () => { cardIndex--; renderCards(); });
+    document.getElementById('fm429-next-btn')?.addEventListener('click',   () => { cardIndex++; renderCards(); });
+    document.getElementById('fm429-delete-one')?.addEventListener('click', () => deleteCard(cardIndex));
+    document.getElementById('fm429-clear-all')?.addEventListener('click',  clearAllCards);
+}
+
+function deleteCard(idx) {
+    if (!confirm(t('deleteConfirm'))) return;
+    const s = getSettings();
+    s.saeyon_cards.splice(idx, 1);
+    if (cardIndex >= s.saeyon_cards.length) cardIndex = Math.max(0, s.saeyon_cards.length - 1);
+    saveSettingsDebounced();
+    renderCards();
+}
+
+function clearAllCards() {
+    if (!confirm(t('clearConfirm'))) return;
+    const s = getSettings();
+    s.saeyon_cards = [];
+    cardIndex = 0;
+    saveSettingsDebounced();
+    renderCards();
 }
 
 // ── 사연 생성 ─────────────────────────────────────────────────
 async function generateSaeyon() {
     const context = getSTContext();
-    if (!context.generateRaw) {
-        console.warn('[FM 42.9] generateRaw 없음');
-        return;
-    }
+    if (!context.generateRaw) { console.warn('[FM 42.9] generateRaw 없음'); return; }
     const chat = context.chat;
-    // ✅ FIX: 1개만 있어도 시도 (기존 < 3 조건이 너무 빡빡했음)
     if (!chat || chat.length < 1) return;
 
+    const lang     = getSettings().language || 'ko';
     const charName = context.name2 || 'char';
+    const userName = context.name1 || 'User';
+
+    // ── 캐릭터 시트 수집 ──
+    let charSheet = '';
+    try {
+        const char  = context.characters?.[context.characterId];
+        const parts = [];
+        if (char?.description) parts.push(char.description.slice(0, 400));
+        if (char?.personality) parts.push(char.personality.slice(0, 200));
+        if (char?.scenario)    parts.push(char.scenario.slice(0, 200));
+        if (parts.length) charSheet = parts.join('\n');
+    } catch (_) {}
+
+    // ── 로어북 수집 ──
+    let lorebook = '';
+    try {
+        const entries = context.worldInfo?.entries || context.worldInfoData?.entries || [];
+        const active  = Object.values(entries)
+            .filter(e => !e.disable && e.content)
+            .slice(0, 5)
+            .map(e => e.content.slice(0, 150))
+            .join('\n');
+        if (active) lorebook = active;
+    } catch (_) {}
+
+    // ── 최근 대화 ──
     const snippet = chat.slice(-20)
-        .map(m => `[${m.is_user ? 'User' : charName}]: ${(m.mes || '').slice(0, 300)}`)
+        .map(m => `[${m.is_user ? userName : charName}]: ${(m.mes || '').slice(0, 300)}`)
         .join('\n');
 
-    const prompt = `당신은 감성적인 심야 라디오 DJ입니다. 아래의 RP 대화를 읽고, 등장인물 중 한 명이 라디오 방송국에 보낸 사연을 한 개 만들어 주세요.
+    // ── 톤 목록 ──
+    const tones = lang === 'ko'
+        ? '다정한 / 따뜻한 / 장난스러운 / 퉁명스러운 / 쓸쓸한 / 설레는 / 화난 / 담담한 / 유쾌한 / 그리운'
+        : 'warm / tender / playful / blunt / melancholic / excited / angry / calm / cheerful / nostalgic';
 
-RP 대화:
+    const prompt = lang === 'ko' ? `
+당신은 심야 감성 라디오 "FM 42.9"의 DJ입니다.
+아래 RP 대화와 캐릭터 정보를 참고해, 등장인물 중 한 명(또는 익명의 청취자)이 방송국에 보낸 실제 라디오 사연 한 편을 창작하세요.
+
+[캐릭터 정보]
+${charSheet || '(없음)'}
+
+[세계관/로어북]
+${lorebook || '(없음)'}
+
+[최근 대화]
 ${snippet}
 
-아래 JSON 형식으로만 응답하세요. 마크다운 없이 중괄호로 시작하세요:
+규칙:
+- "from" 필드: "○○에 사는 ○○", "익명의 청취자", "○○ 님" 등 자연스럽게. 캐릭터 시트와 대화 맥락 기반으로 결정.
+- "body" 필드: 실제 라디오 사연처럼 작성. 길이는 자유(짧아도 길어도 OK). 아래 톤 중 맥락에 어울리는 것을 골라 씀:
+  ${tones}
+- "dj" 필드: DJ 멘트. 1~3문장. 사연에 맞는 분위기로. null도 가능.
+- JSON 형식으로만 응답. 마크다운·백틱 없이 중괄호로 시작.
+
 {
-  "from": "사연자 이름 (캐릭터 이름, 익명, 또는 청취자 OOO 중 자연스러운 것)",
-  "body": "사연 내용 (2~4문장, 감성적인 라디오 사연 느낌)",
-  "dj": "DJ 멘트 (1~2문장, 따뜻한 공감 코멘트, 없으면 null)"
-}`;
+  "from": "...",
+  "body": "...",
+  "dj": "..."
+}`.trim() : `
+You are the DJ of a late-night radio show called "FM 42.9".
+Using the RP conversation and character info below, write one listener letter sent to the station — as if it were a real radio letter.
+
+[Character info]
+${charSheet || '(none)'}
+
+[World/Lorebook]
+${lorebook || '(none)'}
+
+[Recent conversation]
+${snippet}
+
+Rules:
+- "from": e.g. "A listener from [place]", "Anonymous", "[Name] from [town]". Derive from character sheet and context.
+- "body": Written like a real radio listener letter. Length is free. Pick a tone that fits the mood:
+  ${tones}
+- "dj": DJ comment, 1–3 sentences. Can be null.
+- Respond ONLY in JSON. No markdown, no backticks. Start with {.
+
+{
+  "from": "...",
+  "body": "...",
+  "dj": "..."
+}`.trim();
 
     try {
         const raw = await callLLM(prompt);
         if (!raw?.trim()) return;
 
-        // ✅ FIX: greedy 매칭으로 중첩 JSON도 올바르게 파싱
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (!jsonMatch) throw new Error('JSON 없음');
         const card = JSON.parse(jsonMatch[0]);
@@ -341,7 +472,7 @@ ${snippet}
         const s = getSettings();
         if (!s.saeyon_cards) s.saeyon_cards = [];
         s.saeyon_cards.push({ from: card.from, body: card.body, dj: card.dj || null, time: formatTime() });
-        if (s.saeyon_cards.length > 30) s.saeyon_cards = s.saeyon_cards.slice(-30);
+        if (s.saeyon_cards.length > 50) s.saeyon_cards = s.saeyon_cards.slice(-50);
 
         cardIndex = s.saeyon_cards.length - 1;
         saveSettingsDebounced();
@@ -357,7 +488,7 @@ function showSaeyonNotification() {
     const dot = document.querySelector('#fm429-toggle-btn .fm429-btn-dot');
     if (!dot) return;
     dot.style.background = '#39ff14';
-    dot.style.boxShadow = '0 0 8px #39ff14';
+    dot.style.boxShadow  = '0 0 8px #39ff14';
     setTimeout(() => { dot.style.background = ''; dot.style.boxShadow = ''; }, 4000);
 }
 
@@ -392,51 +523,49 @@ function buildPanelHTML() {
 
         <div class="fm429-tabs">
             <button class="fm429-tab active" data-tab="play">▶ PLAY</button>
-            <button class="fm429-tab" data-tab="mail">✉ MAIL</button>
+            <button class="fm429-tab" data-tab="mail">✉ ${t('mailLabel')}</button>
         </div>
 
         <div class="fm429-content">
             <div class="fm429-tab-pane active" id="fm429-pane-play">
-                <!-- 상태 표시 영역 (딥링크 방식) -->
                 <div id="fm429-yt-player">
                     <div class="fm429-player-placeholder" id="fm429-player-placeholder">
                         <div class="fm429-placeholder-icon">▶</div>
-                        <div class="fm429-placeholder-text">URL 입력 후 PLAY</div>
-                        <div class="fm429-placeholder-sub">유튜브 앱으로 열립니다</div>
+                        <div class="fm429-placeholder-text">${t('urlLabel')} →</div>
+                        <div class="fm429-placeholder-sub">${t('urlHint')}</div>
                     </div>
                 </div>
                 <div class="fm429-status-row">
-                    <span id="fm429-status-bar">STANDBY · FM 42.9</span>
+                    <span id="fm429-status-bar">${t('standby')}</span>
                 </div>
-                <div class="fm429-label">YOUTUBE URL</div>
+                <div class="fm429-label">${t('urlLabel')}</div>
                 <div class="fm429-input-row">
                     <input class="fm429-input" id="fm429-url-input" type="text"
-                        placeholder="youtu.be/... 또는 youtube.com/watch?v=..."
+                        placeholder="${t('urlPlaceholder')}"
                         value="${escapeHtml(s.last_url || '')}">
                 </div>
                 <div class="fm429-input-row">
-                    <button class="fm429-btn primary" id="fm429-play-btn">PLAY</button>
-                    <button class="fm429-btn stop" id="fm429-stop-btn" style="display:none;">■ STOP</button>
+                    <button class="fm429-btn primary" id="fm429-play-btn">${t('play')}</button>
+                    <button class="fm429-btn stop"    id="fm429-stop-btn" style="display:none;">${t('stop')}</button>
                 </div>
-
             </div>
 
             <div class="fm429-tab-pane" id="fm429-pane-mail">
                 <div class="fm429-mail-header">
-                    <span class="fm429-label">수신된 사연</span>
-                    <span class="fm429-mail-count" id="fm429-mail-count">${(s.saeyon_cards || []).length}건</span>
+                    <span class="fm429-label">${t('mailLabel')}</span>
+                    <span class="fm429-mail-count" id="fm429-mail-count">${(s.saeyon_cards || []).length}${t('mailUnit')}</span>
                 </div>
                 <div id="fm429-cards-container"></div>
             </div>
         </div>
 
         <div class="fm429-footer">
-            <span class="fm429-footer-label">사연</span>
+            <span class="fm429-footer-label">${t('saeyonLabel')}</span>
             <select class="fm429-select" id="fm429-interval-select">
                 <option value="5"      ${s.saeyon_interval == '5'      ? 'selected' : ''}>5 msg</option>
                 <option value="10"     ${s.saeyon_interval == '10'     ? 'selected' : ''}>10 msg</option>
                 <option value="20"     ${s.saeyon_interval == '20'     ? 'selected' : ''}>20 msg</option>
-                <option value="custom" ${s.saeyon_interval === 'custom' ? 'selected' : ''}>직접</option>
+                <option value="custom" ${s.saeyon_interval === 'custom' ? 'selected' : ''}>…</option>
             </select>
             <input class="fm429-footer-custom ${s.saeyon_interval === 'custom' ? 'show' : ''}"
                    id="fm429-custom-interval" type="number" min="1" max="999"
@@ -456,39 +585,42 @@ function buildSettingsHTML() {
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content" style="padding:12px; font-size:12px;">
+
                 <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                    <input type="checkbox" id="fm429-enabled-checkbox">
-                    <span>FM 42.9 활성화</span>
+                    <input type="checkbox" id="fm429-enabled-checkbox" ${s.enabled ? 'checked' : ''}>
+                    <span>${t('settingsTitle')}</span>
                 </label>
 
-                <div style="margin-bottom:4px; font-size:11px; opacity:0.6; letter-spacing:0.5px;">
-                    패널 위치
-                </div>
+                <div style="margin-bottom:4px; font-size:11px; opacity:0.6; letter-spacing:0.5px;">${t('posLabel')}</div>
                 <div style="display:flex; gap:8px; margin-bottom:12px;">
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                        <input type="radio" name="fm429-position" id="fm429-pos-left"
-                               value="left" ${(s.position || 'left') === 'left' ? 'checked' : ''}>
-                        <span>◧ 좌측 상단</span>
+                        <input type="radio" name="fm429-position" value="left"  ${(s.position || 'left') === 'left'  ? 'checked' : ''}>
+                        <span>${t('posLeft')}</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                        <input type="radio" name="fm429-position" id="fm429-pos-right"
-                               value="right" ${s.position === 'right' ? 'checked' : ''}>
-                        <span>◨ 우측 상단</span>
+                        <input type="radio" name="fm429-position" value="right" ${s.position === 'right' ? 'checked' : ''}>
+                        <span>${t('posRight')}</span>
                     </label>
                 </div>
 
-                <div style="margin-bottom:4px; font-size:11px; opacity:0.6; letter-spacing:0.5px;">
-                    사연 생성 연결 프로필
+                <div style="margin-bottom:4px; font-size:11px; opacity:0.6; letter-spacing:0.5px;">${t('langLabel')}</div>
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="radio" name="fm429-language" value="ko" ${(s.language || 'ko') === 'ko' ? 'checked' : ''}>
+                        <span>🇰🇷 한국어</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="radio" name="fm429-language" value="en" ${s.language === 'en' ? 'checked' : ''}>
+                        <span>🇺🇸 English</span>
+                    </label>
                 </div>
+
+                <div style="margin-bottom:4px; font-size:11px; opacity:0.6; letter-spacing:0.5px;">${t('profileLabel')}</div>
                 <select id="fm429-profile-select" class="text_pole" style="width:100%; margin-bottom:10px;">
-                    <option value="">메인 프로필 사용 (기본)</option>
+                    <option value="">${t('profileDefault')}</option>
                 </select>
 
-                <div style="font-size:11px; opacity:0.5; line-height:1.7;">
-                    별도 프로필을 지정하면 사연 생성 시 해당 프로필로 일시 전환 후<br>
-                    자동으로 원래 프로필로 복귀합니다.<br>
-                    지정하지 않으면 현재 메인 프로필을 그대로 사용합니다.
-                </div>
+                <div style="font-size:11px; opacity:0.5; line-height:1.7;">${t('profileHint')}</div>
             </div>
         </div>
     </div>`;
@@ -515,7 +647,7 @@ function bindPanelEvents() {
         const url = $('#fm429-url-input').val().trim();
         if (!url) return;
         const vid = extractVideoId(url);
-        if (!vid) { toastr.warning('올바른 YouTube URL을 입력해주세요.', 'FM 42.9'); return; }
+        if (!vid) { toastr.warning(t('badUrl'), 'FM 42.9'); return; }
         getSettings().last_url = url;
         saveSettingsDebounced();
         loadYoutube(vid);
@@ -549,6 +681,13 @@ function bindSettingsEvents() {
         saveSettingsDebounced();
     });
 
+    // 언어 변경 시 패널 전체 재빌드 (UI 텍스트 일괄 반영)
+    $(document).on('change', 'input[name="fm429-language"]', function () {
+        getSettings().language = $(this).val();
+        saveSettingsDebounced();
+        rebuildPanel();
+    });
+
     $(document).on('change', '#fm429-profile-select', function () {
         getSettings().apiProfile = $(this).val();
         saveSettingsDebounced();
@@ -560,21 +699,16 @@ function applyPosition(pos) {
     const btn   = document.getElementById('fm429-toggle-btn');
     const panel = document.getElementById('fm429-panel');
     if (!btn || !panel) return;
-
     if (pos === 'right') {
-        btn.style.removeProperty('left');
-        btn.style.setProperty('right', '8px');
-        panel.style.removeProperty('left');
-        panel.style.setProperty('right', '8px');
+        btn.style.removeProperty('left');    btn.style.setProperty('right', '8px');
+        panel.style.removeProperty('left');  panel.style.setProperty('right', '8px');
     } else {
-        btn.style.removeProperty('right');
-        btn.style.setProperty('left', '8px');
-        panel.style.removeProperty('right');
-        panel.style.setProperty('left', '8px');
+        btn.style.removeProperty('right');   btn.style.setProperty('left', '8px');
+        panel.style.removeProperty('right'); panel.style.setProperty('left', '8px');
     }
 }
 
-// ── Visibility ────────────────────────────────────────────────
+// ── Visibility / Rebuild ──────────────────────────────────────
 function toggleRadioVisibility() {
     if (getSettings().enabled) {
         if (!document.getElementById('fm429-toggle-btn')) injectPanel();
@@ -595,6 +729,20 @@ function injectPanel() {
     applyPosition(getSettings().position || 'left');
 }
 
+// 언어 전환 등 패널 전체 재생성이 필요할 때 사용
+function rebuildPanel() {
+    const wasOpen = panelOpen;
+    $('#fm429-root').remove();
+    panelOpen = false;
+    injectPanel();
+    if (wasOpen) {
+        panelOpen = true;
+        $('#fm429-panel').addClass('open');
+        $('#fm429-toggle-btn').addClass('active');
+    }
+    if (isPlaying) updatePlayUI();
+}
+
 // ── Init ──────────────────────────────────────────────────────
 jQuery(async () => {
     getSettings();
@@ -602,16 +750,12 @@ jQuery(async () => {
     $('#extensions_settings').append(buildSettingsHTML());
     bindSettingsEvents();
 
-    $('#fm429-enabled-checkbox').prop('checked', getSettings().enabled);
-
-    // 프로필 목록은 ST가 connectionManager를 초기화한 뒤 채워야 해서 약간 딜레이
     setTimeout(populateProfileSelect, 800);
 
     if (getSettings().enabled) injectPanel();
 
-    // ✅ FIX: ST 공식 eventSource 사용 (기존 jQuery 이벤트명은 ST에 존재하지 않음)
     eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
-    eventSource.on(event_types.MESSAGE_SENT, onMessageReceived);
+    eventSource.on(event_types.MESSAGE_SENT,     onMessageReceived);
 
     console.log('[FM 42.9] ON AIR 📻');
 });
