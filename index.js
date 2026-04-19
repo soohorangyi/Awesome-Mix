@@ -4,7 +4,7 @@
 //  Profile switching via /profile slash command (gotcha pattern)
 // ============================================================
 
-import { saveSettingsDebounced } from '../../../../script.js';
+import { saveSettingsDebounced, eventSource, event_types } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
 
 const MODULE_NAME = 'fm429';
@@ -308,7 +308,8 @@ async function generateSaeyon() {
         return;
     }
     const chat = context.chat;
-    if (!chat || chat.length < 3) return;
+    // ✅ FIX: 1개만 있어도 시도 (기존 < 3 조건이 너무 빡빡했음)
+    if (!chat || chat.length < 1) return;
 
     const charName = context.name2 || 'char';
     const snippet = chat.slice(-20)
@@ -331,7 +332,8 @@ ${snippet}
         const raw = await callLLM(prompt);
         if (!raw?.trim()) return;
 
-        const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+        // ✅ FIX: greedy 매칭으로 중첩 JSON도 올바르게 파싱
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (!jsonMatch) throw new Error('JSON 없음');
         const card = JSON.parse(jsonMatch[0]);
         if (!card.from || !card.body) throw new Error('카드 형식 오류');
@@ -607,8 +609,9 @@ jQuery(async () => {
 
     if (getSettings().enabled) injectPanel();
 
-    $(document).on('CHARACTER_MESSAGE_RENDERED', onMessageReceived);
-    $(document).on('generate_after_data', onMessageReceived);
+    // ✅ FIX: ST 공식 eventSource 사용 (기존 jQuery 이벤트명은 ST에 존재하지 않음)
+    eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
+    eventSource.on(event_types.MESSAGE_SENT, onMessageReceived);
 
     console.log('[FM 42.9] ON AIR 📻');
 });
