@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "description": "빈티지 라디오 — 유튜브 백그라운드 오디오 & RP 사연 수신",
     "js": "index.js",
-    "css": "style.css",
+    "css": "style_summer.css",
     "author": "FM 42.9",
     "homePage": "",
     "requires": []
