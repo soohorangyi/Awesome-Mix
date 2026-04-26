@@ -145,10 +145,27 @@ async function callLLM(prompt) {
 
     if (selectedProfile) {
         try {
-            const p = extension_settings?.connectionManager?.profiles;
-            if (Array.isArray(p)) {
-                previousProfile = p.find(x => x.isActive)?.name ?? null;
+            // 프로필 전환 전에 현재 활성 프로필 이름을 먼저 캐싱 (다양한 경로 시도)
+            const mgr = extension_settings?.connectionManager;
+            const profiles = mgr?.profiles;
+            if (Array.isArray(profiles)) {
+                previousProfile =
+                    profiles.find(x => x.isActive)?.name ??
+                    profiles.find(x => x.id && x.id === mgr?.selectedProfile)?.name ??
+                    profiles.find(x => x.name && x.name === mgr?.currentProfile)?.name ??
+                    null;
             }
+            // connectionManager에서 못 찾으면 context에서 시도
+            if (!previousProfile) {
+                previousProfile =
+                    context?.activeProfile ??
+                    context?.currentProfile ??
+                    mgr?.selectedProfile ??
+                    null;
+            }
+
+            console.log(`[FM 42.9] 현재 프로필: "${previousProfile}" → 사연 생성 프로필: "${selectedProfile}"`);
+
             if (context.executeSlashCommandsWithOptions) {
                 await context.executeSlashCommandsWithOptions(
                     `/profile ${selectedProfile}`,
@@ -162,15 +179,28 @@ async function callLLM(prompt) {
 
     let result = '';
     try {
-        result = await context.generateRaw(prompt, null, false, false, '');
-    } finally {
-        if (selectedProfile && previousProfile && context.executeSlashCommandsWithOptions) {
+        // generateRaw: positional args → object 형식으로 수정 (ST 최신 API 대응)
+        if (typeof context.generateRaw === 'function') {
             try {
-                await context.executeSlashCommandsWithOptions(
-                    `/profile ${previousProfile}`,
-                    { showOutput: false }
-                );
-            } catch (_) {}
+                result = await context.generateRaw({ prompt, instructOverride: false });
+            } catch (_) {
+                // object 형식 미지원 구버전 ST 폴백
+                result = await context.generateRaw(prompt, null, false, false, '');
+            }
+        }
+    } finally {
+        if (selectedProfile && context.executeSlashCommandsWithOptions) {
+            if (previousProfile) {
+                try {
+                    console.log(`[FM 42.9] 프로필 복귀: "${previousProfile}"`);
+                    await context.executeSlashCommandsWithOptions(
+                        `/profile ${previousProfile}`,
+                        { showOutput: false }
+                    );
+                } catch (_) {}
+            } else {
+                console.warn('[FM 42.9] 원래 프로필을 특정하지 못해 복귀 생략. connectionManager 상태:', extension_settings?.connectionManager);
+            }
         }
     }
     return result || '';
