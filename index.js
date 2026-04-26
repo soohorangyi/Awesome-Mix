@@ -148,9 +148,9 @@ async function callLLM(prompt) {
     }
 
     // ── 현재(메인) 프로필 이름 캐싱 ──────────────────────────────
-    // extensionSettings는 module 스코프의 extension_settings가 아니라
-    // context.extensionSettings 로 접근해야 함 (콘솔 직접 접근 불가).
-    // selectedProfile은 UUID로 저장되므로 id 매칭으로 이름을 찾아야 함.
+    // selectedProfile은 UUID로 저장 → id 매칭으로 이름을 찾음
+    // 메인이 <None> 상태면 selectedProfile이 없으므로 previousProfile = null
+    // 복귀 시 null이면 /profile <None> 으로 해제
     let previousProfile = null;
     try {
         const mgr = context.extensionSettings?.connectionManager;
@@ -159,7 +159,7 @@ async function callLLM(prompt) {
             const current = profiles.find(p => p.id === mgr.selectedProfile);
             previousProfile = current?.name ?? null;
         }
-        console.log(`[FM 42.9] 메인 프로필: "${previousProfile}" → 사연 생성 프로필: "${selectedProfile}"`);
+        console.log(`[FM 42.9] 메인 프로필: "${previousProfile ?? '<None>'}" → 사연 생성 프로필: "${selectedProfile}"`);
     } catch (_) {}
 
     // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
@@ -181,18 +181,17 @@ async function callLLM(prompt) {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
         if (context.executeSlashCommandsWithOptions) {
-            if (previousProfile) {
-                try {
-                    console.log(`[FM 42.9] 메인 프로필 복귀: "${previousProfile}"`);
-                    await context.executeSlashCommandsWithOptions(
-                        `/profile ${previousProfile}`,
-                        { showOutput: false }
-                    );
-                } catch (_) {}
-            } else {
-                console.warn('[FM 42.9] 메인 프로필 특정 실패 — 복귀 불가.');
-                console.warn('[FM 42.9] connectionManager:', context.extensionSettings?.connectionManager);
-            }
+            // previousProfile이 null이면 메인이 <None> 상태였던 것 → <None>으로 복귀
+            const restoreCmd = previousProfile
+                ? `/profile ${previousProfile}`
+                : `/profile <None>`;
+            try {
+                console.log(`[FM 42.9] 프로필 복귀: "${previousProfile ?? '<None>'}"`);
+                await context.executeSlashCommandsWithOptions(
+                    restoreCmd,
+                    { showOutput: false }
+                );
+            } catch (_) {}
         }
     }
     return result || '';
