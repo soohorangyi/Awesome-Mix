@@ -141,65 +141,74 @@ function populateProfileSelect() {
 async function callLLM(prompt) {
     const context = getSTContext();
     const selectedProfile = getSettings().apiProfile;
-    let previousProfile = null;
 
-    if (selectedProfile) {
-        try {
-            // 프로필 전환 전에 현재 활성 프로필 이름을 먼저 캐싱 (다양한 경로 시도)
-            const mgr = extension_settings?.connectionManager;
-            const profiles = mgr?.profiles;
-            if (Array.isArray(profiles)) {
-                previousProfile =
-                    profiles.find(x => x.isActive)?.name ??
-                    profiles.find(x => x.id && x.id === mgr?.selectedProfile)?.name ??
-                    profiles.find(x => x.name && x.name === mgr?.currentProfile)?.name ??
-                    null;
-            }
-            // connectionManager에서 못 찾으면 context에서 시도
-            if (!previousProfile) {
-                previousProfile =
-                    context?.activeProfile ??
-                    context?.currentProfile ??
-                    mgr?.selectedProfile ??
-                    null;
-            }
-
-            console.log(`[FM 42.9] 현재 프로필: "${previousProfile}" → 사연 생성 프로필: "${selectedProfile}"`);
-
-            if (context.executeSlashCommandsWithOptions) {
-                await context.executeSlashCommandsWithOptions(
-                    `/profile ${selectedProfile}`,
-                    { showOutput: false }
-                );
-            }
-        } catch (e) {
-            console.warn('[FM 42.9] 프로필 전환 실패:', e);
-        }
+    // 별도 프로필 지정 없으면 그냥 현재 프로필로 생성
+    if (!selectedProfile) {
+        return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
+    // ── 현재(메인) 프로필 이름 캐싱 ──────────────────────────────
+    // ST의 /profile 커맨드는 실행 즉시 현재 진행 중인 generation을 abort 시키기 때문에
+    // generateRaw 호출 전에 프로필을 전환하면 사연 생성이 취소됨.
+    // 해결책: ① 현재 프로필 저장 → ② 사연 생성용 프로필로 전환 → ③ generateRaw →
+    //         ④ 완료 후 메인 프로필로 복귀
+    // abort 문제는 generateRaw가 완전히 끝난 뒤에만 프로필을 바꾸는 것으로 회피.
+    let previousProfile = null;
+    try {
+        const mgr = extension_settings?.connectionManager;
+        const profiles = mgr?.profiles;
+        if (Array.isArray(profiles)) {
+            previousProfile =
+                profiles.find(x => x.isActive)?.name ??
+                profiles.find(x => x.id && x.id === mgr?.selectedProfile)?.name ??
+                profiles.find(x => x.name && x.name === mgr?.currentProfile)?.name ??
+                null;
+        }
+        if (!previousProfile) {
+            previousProfile =
+                context?.activeProfile ??
+                context?.currentProfile ??
+                mgr?.selectedProfile ??
+                null;
+        }
+        console.log(`[FM 42.9] 메인 프로필: "${previousProfile}" / 사연 생성 프로필: "${selectedProfile}"`);
+    } catch (_) {}
+
+    // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
+    try {
+        if (context.executeSlashCommandsWithOptions) {
+            await context.executeSlashCommandsWithOptions(
+                `/profile ${selectedProfile}`,
+                { showOutput: false }
+            );
+        }
+    } catch (e) {
+        console.warn('[FM 42.9] 프로필 전환 실패:', e);
+        // 전환 자체가 실패하면 메인 프로필로 그냥 생성
+        return (await context.generateRaw(prompt, null, false, false, '')) || '';
+    }
+
+    // ── ② 사연 생성 (전환 완료 후 실행) ─────────────────────────
+    // generateRaw가 완료될 때까지 기다린 뒤에 복귀 처리.
+    // abort가 발생하더라도 finally에서 반드시 복귀.
     let result = '';
     try {
-        // generateRaw: positional args → object 형식으로 수정 (ST 최신 API 대응)
-        if (typeof context.generateRaw === 'function') {
-            try {
-                result = await context.generateRaw({ prompt, instructOverride: false });
-            } catch (_) {
-                // object 형식 미지원 구버전 ST 폴백
-                result = await context.generateRaw(prompt, null, false, false, '');
-            }
-        }
+        result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
-        if (selectedProfile && context.executeSlashCommandsWithOptions) {
+        // ── ③ 메인 프로필로 복귀 ─────────────────────────────────
+        if (context.executeSlashCommandsWithOptions) {
             if (previousProfile) {
                 try {
-                    console.log(`[FM 42.9] 프로필 복귀: "${previousProfile}"`);
+                    console.log(`[FM 42.9] 메인 프로필 복귀: "${previousProfile}"`);
                     await context.executeSlashCommandsWithOptions(
                         `/profile ${previousProfile}`,
                         { showOutput: false }
                     );
                 } catch (_) {}
             } else {
-                console.warn('[FM 42.9] 원래 프로필을 특정하지 못해 복귀 생략. connectionManager 상태:', extension_settings?.connectionManager);
+                // previousProfile을 특정 못한 경우: connectionManager 덤프해서 디버깅용 출력
+                console.warn('[FM 42.9] 메인 프로필 특정 실패 — 복귀 불가.');
+                console.warn('[FM 42.9] connectionManager:', extension_settings?.connectionManager);
             }
         }
     }
