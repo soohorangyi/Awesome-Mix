@@ -142,36 +142,24 @@ async function callLLM(prompt) {
     const context = getSTContext();
     const selectedProfile = getSettings().apiProfile;
 
-    // 별도 프로필 지정 없으면 그냥 현재 프로필로 생성
+    // 별도 프로필 지정 없으면 현재 프로필로 바로 생성
     if (!selectedProfile) {
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
     // ── 현재(메인) 프로필 이름 캐싱 ──────────────────────────────
-    // ST의 /profile 커맨드는 실행 즉시 현재 진행 중인 generation을 abort 시키기 때문에
-    // generateRaw 호출 전에 프로필을 전환하면 사연 생성이 취소됨.
-    // 해결책: ① 현재 프로필 저장 → ② 사연 생성용 프로필로 전환 → ③ generateRaw →
-    //         ④ 완료 후 메인 프로필로 복귀
-    // abort 문제는 generateRaw가 완전히 끝난 뒤에만 프로필을 바꾸는 것으로 회피.
+    // extensionSettings는 module 스코프의 extension_settings가 아니라
+    // context.extensionSettings 로 접근해야 함 (콘솔 직접 접근 불가).
+    // selectedProfile은 UUID로 저장되므로 id 매칭으로 이름을 찾아야 함.
     let previousProfile = null;
     try {
-        const mgr = extension_settings?.connectionManager;
+        const mgr = context.extensionSettings?.connectionManager;
         const profiles = mgr?.profiles;
-        if (Array.isArray(profiles)) {
-            previousProfile =
-                profiles.find(x => x.isActive)?.name ??
-                profiles.find(x => x.id && x.id === mgr?.selectedProfile)?.name ??
-                profiles.find(x => x.name && x.name === mgr?.currentProfile)?.name ??
-                null;
+        if (Array.isArray(profiles) && mgr?.selectedProfile) {
+            const current = profiles.find(p => p.id === mgr.selectedProfile);
+            previousProfile = current?.name ?? null;
         }
-        if (!previousProfile) {
-            previousProfile =
-                context?.activeProfile ??
-                context?.currentProfile ??
-                mgr?.selectedProfile ??
-                null;
-        }
-        console.log(`[FM 42.9] 메인 프로필: "${previousProfile}" / 사연 생성 프로필: "${selectedProfile}"`);
+        console.log(`[FM 42.9] 메인 프로필: "${previousProfile}" → 사연 생성 프로필: "${selectedProfile}"`);
     } catch (_) {}
 
     // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
@@ -184,18 +172,14 @@ async function callLLM(prompt) {
         }
     } catch (e) {
         console.warn('[FM 42.9] 프로필 전환 실패:', e);
-        // 전환 자체가 실패하면 메인 프로필로 그냥 생성
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
-    // ── ② 사연 생성 (전환 완료 후 실행) ─────────────────────────
-    // generateRaw가 완료될 때까지 기다린 뒤에 복귀 처리.
-    // abort가 발생하더라도 finally에서 반드시 복귀.
+    // ── ② 사연 생성 → ③ 완료 후 반드시 메인 프로필로 복귀 ───────
     let result = '';
     try {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
-        // ── ③ 메인 프로필로 복귀 ─────────────────────────────────
         if (context.executeSlashCommandsWithOptions) {
             if (previousProfile) {
                 try {
@@ -206,9 +190,8 @@ async function callLLM(prompt) {
                     );
                 } catch (_) {}
             } else {
-                // previousProfile을 특정 못한 경우: connectionManager 덤프해서 디버깅용 출력
                 console.warn('[FM 42.9] 메인 프로필 특정 실패 — 복귀 불가.');
-                console.warn('[FM 42.9] connectionManager:', extension_settings?.connectionManager);
+                console.warn('[FM 42.9] connectionManager:', context.extensionSettings?.connectionManager);
             }
         }
     }
