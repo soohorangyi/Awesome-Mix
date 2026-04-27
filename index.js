@@ -21,7 +21,8 @@ const defaultSettings = {
     position: 'left',   // 'left' | 'right'
     language: 'ko',     // 'ko' | 'en'
     saeyon_paused: false,
-    playlists: [],      // [{ id, name, items: [{ url, memo }] }]
+    playlists: [],      // legacy — migrated to groups on load
+    groups: [],         // [{ id, name, lists: [{ id, name, items: [{ url, memo }] }] }]
 };
 
 let isPlaying = false;
@@ -63,7 +64,7 @@ const I18N = {
         plTab:          '📋 목록',
         plNewName:      '새 리스트 이름',
         plAddList:      '+ 리스트 추가',
-        plEmpty:        '플레이리스트가 없어요.<br>아래에서 새 리스트를 만들어보세요.',
+        plEmpty:        '그룹이 없어요.<br>아래에서 새 그룹을 만들어보세요.',
         plUrlPlaceholder: 'YouTube URL',
         plMemoPlaceholder: '메모 (선택)',
         plAddItem:      '추가',
@@ -73,8 +74,13 @@ const I18N = {
         plDeleteItemConfirm: '이 항목을 삭제할까요?',
         plPlay:         '▶',
         plNoUrl:        'URL을 입력해주세요.',
+        plNewGroupName: '새 그룹 이름',
+        plAddGroup:     '+ 그룹 추가',
+        plDeleteGroup:  '그룹 삭제',
+        plDeleteGroupConfirm: '이 그룹을 삭제할까요?',
+        plEmptyLists:   '리스트 없음',
+        plEmptyItems:   '항목 없음',
     },
-    en: {
         standby:        'STANDBY · FM 42.9',
         onair:          'ON AIR',
         urlPlaceholder: 'youtu.be/... or youtube.com/watch?v=...',
@@ -116,8 +122,13 @@ const I18N = {
         plDeleteItemConfirm: 'Delete this item?',
         plPlay:         '▶',
         plNoUrl:        'Please enter a URL.',
+        plNewGroupName: 'New group name',
+        plAddGroup:     '+ Add group',
+        plDeleteGroup:  'Delete group',
+        plDeleteGroupConfirm: 'Delete this group?',
+        plEmptyLists:   'No lists',
+        plEmptyItems:   'No items',
     },
-};
 
 function t(key) {
     const lang = getSettings().language || 'ko';
@@ -133,6 +144,16 @@ function getSettings() {
     Object.keys(defaultSettings).forEach(k => {
         if (s[k] === undefined) s[k] = defaultSettings[k];
     });
+    // ── 마이그레이션: 구버전 playlists → groups 변환 ──
+    if (!s.groups) s.groups = [];
+    if (s.playlists && s.playlists.length > 0 && s.groups.length === 0) {
+        s.groups.push({
+            id: 'grp_migrated',
+            name: '기존 목록',
+            lists: s.playlists.map(pl => ({ id: pl.id, name: pl.name, items: pl.items || [] })),
+        });
+        s.playlists = [];
+    }
     return s;
 }
 
@@ -605,48 +626,72 @@ function updatePauseUI() {
 }
 
 // ── Playlists ─────────────────────────────────────────────────
-let plOpenId = null; // 현재 펼쳐진 리스트 ID
+let plOpenGroupId = null; // 현재 펼쳐진 그룹 ID
+let plOpenListId  = null; // 현재 펼쳐진 리스트 ID
 
 function renderPlaylists() {
     const container = document.getElementById('fm429-pl-container');
     if (!container) return;
     const s = getSettings();
-    const lists = s.playlists || [];
+    const groups = s.groups || [];
 
     let html = '';
 
-    if (lists.length === 0) {
+    if (groups.length === 0) {
         html += `<div class="fm429-empty">${t('plEmpty')}</div>`;
     } else {
-        lists.forEach(list => {
-            const open = plOpenId === list.id;
+        groups.forEach(group => {
+            const gOpen = plOpenGroupId === group.id;
+            const listCount = (group.lists || []).reduce((acc, l) => acc + (l.items || []).length, 0);
             html += `
-            <div class="fm429-pl-list" data-list-id="${escapeHtml(list.id)}">
-                <div class="fm429-pl-list-header">
-                    <button class="fm429-pl-toggle-btn" data-list-id="${escapeHtml(list.id)}">
-                        <span class="fm429-pl-arrow">${open ? '▾' : '▸'}</span>
-                        <span class="fm429-pl-list-name">${escapeHtml(list.name)}</span>
-                        <span class="fm429-pl-count">${list.items.length}</span>
+            <div class="fm429-pl-group" data-group-id="${escapeHtml(group.id)}">
+                <div class="fm429-pl-group-header">
+                    <button class="fm429-pl-group-toggle-btn" data-group-id="${escapeHtml(group.id)}">
+                        <span class="fm429-pl-arrow">${gOpen ? '▾' : '▸'}</span>
+                        <span class="fm429-pl-group-name">${escapeHtml(group.name)}</span>
+                        <span class="fm429-pl-count">${(group.lists || []).length}</span>
                     </button>
-                    <button class="fm429-pl-del-list-btn" data-list-id="${escapeHtml(list.id)}" title="${t('plDeleteList')}">✕</button>
+                    <button class="fm429-pl-del-group-btn" data-group-id="${escapeHtml(group.id)}" title="${t('plDeleteGroup')}">✕</button>
                 </div>
-                ${open ? `
-                <div class="fm429-pl-items">
-                    ${list.items.length === 0
-                        ? `<div class="fm429-pl-empty-items">항목 없음</div>`
-                        : list.items.map((item, idx) => `
-                    <div class="fm429-pl-item" data-list-id="${escapeHtml(list.id)}" data-idx="${idx}">
-                        <button class="fm429-pl-play-item" data-url="${escapeHtml(item.url)}" title="재생">${t('plPlay')}</button>
-                        <div class="fm429-pl-item-info">
-                            <div class="fm429-pl-item-url">${escapeHtml(item.url)}</div>
-                            ${item.memo ? `<div class="fm429-pl-item-memo">${escapeHtml(item.memo)}</div>` : ''}
-                        </div>
-                        <button class="fm429-pl-del-item-btn" data-list-id="${escapeHtml(list.id)}" data-idx="${idx}" title="${t('plDeleteItem')}">🗑</button>
-                    </div>`).join('')}
-                    <div class="fm429-pl-add-item-row" data-list-id="${escapeHtml(list.id)}">
-                        <input class="fm429-input fm429-pl-url-input" type="text" placeholder="${t('plUrlPlaceholder')}">
-                        <input class="fm429-input fm429-pl-memo-input" type="text" placeholder="${t('plMemoPlaceholder')}">
-                        <button class="fm429-btn primary fm429-pl-add-item-btn" data-list-id="${escapeHtml(list.id)}">${t('plAddItem')}</button>
+                ${gOpen ? `<div class="fm429-pl-group-body">
+                    ${(group.lists || []).length === 0
+                        ? `<div class="fm429-pl-empty-items" style="padding-left:8px;">${t('plEmptyLists')}</div>`
+                        : (group.lists || []).map(list => {
+                            const lOpen = plOpenListId === list.id;
+                            return `
+                            <div class="fm429-pl-list" data-list-id="${escapeHtml(list.id)}" data-group-id="${escapeHtml(group.id)}">
+                                <div class="fm429-pl-list-header">
+                                    <button class="fm429-pl-toggle-btn" data-list-id="${escapeHtml(list.id)}">
+                                        <span class="fm429-pl-arrow">${lOpen ? '▾' : '▸'}</span>
+                                        <span class="fm429-pl-list-name">${escapeHtml(list.name)}</span>
+                                        <span class="fm429-pl-count">${(list.items || []).length}곡</span>
+                                    </button>
+                                    <button class="fm429-pl-del-list-btn" data-list-id="${escapeHtml(list.id)}" data-group-id="${escapeHtml(group.id)}" title="${t('plDeleteList')}">✕</button>
+                                </div>
+                                ${lOpen ? `
+                                <div class="fm429-pl-items">
+                                    ${(list.items || []).length === 0
+                                        ? `<div class="fm429-pl-empty-items">${t('plEmptyItems')}</div>`
+                                        : (list.items || []).map((item, idx) => `
+                                    <div class="fm429-pl-item" data-list-id="${escapeHtml(list.id)}" data-group-id="${escapeHtml(group.id)}" data-idx="${idx}">
+                                        <button class="fm429-pl-play-item" data-url="${escapeHtml(item.url)}" title="재생">${t('plPlay')}</button>
+                                        <div class="fm429-pl-item-info">
+                                            <div class="fm429-pl-item-url">${escapeHtml(item.url)}</div>
+                                            ${item.memo ? `<div class="fm429-pl-item-memo">${escapeHtml(item.memo)}</div>` : ''}
+                                        </div>
+                                        <button class="fm429-pl-del-item-btn" data-list-id="${escapeHtml(list.id)}" data-group-id="${escapeHtml(group.id)}" data-idx="${idx}" title="${t('plDeleteItem')}">🗑</button>
+                                    </div>`).join('')}
+                                    <div class="fm429-pl-add-item-row" data-list-id="${escapeHtml(list.id)}" data-group-id="${escapeHtml(group.id)}">
+                                        <input class="fm429-input fm429-pl-url-input" type="text" placeholder="${t('plUrlPlaceholder')}">
+                                        <input class="fm429-input fm429-pl-memo-input" type="text" placeholder="${t('plMemoPlaceholder')}">
+                                        <button class="fm429-btn primary fm429-pl-add-item-btn" data-list-id="${escapeHtml(list.id)}" data-group-id="${escapeHtml(group.id)}">${t('plAddItem')}</button>
+                                    </div>
+                                </div>` : ''}
+                            </div>`;
+                        }).join('')}
+                    <div class="fm429-pl-new-list-row" data-group-id="${escapeHtml(group.id)}">
+                        <input class="fm429-input fm429-pl-new-name" type="text" placeholder="${t('plNewName')}">
+                        <button class="fm429-btn primary fm429-pl-add-list-btn" data-group-id="${escapeHtml(group.id)}">${t('plAddList')}</button>
                     </div>
                 </div>` : ''}
             </div>`;
@@ -654,47 +699,77 @@ function renderPlaylists() {
     }
 
     html += `
-    <div class="fm429-pl-new-row">
-        <input class="fm429-input fm429-pl-new-name" type="text" placeholder="${t('plNewName')}">
-        <button class="fm429-btn primary fm429-pl-add-list-btn">${t('plAddList')}</button>
+    <div class="fm429-pl-new-group-row">
+        <input class="fm429-input fm429-pl-new-group-name" type="text" placeholder="${t('plNewGroupName')}">
+        <button class="fm429-btn primary fm429-pl-add-group-btn">${t('plAddGroup')}</button>
     </div>`;
 
     container.innerHTML = html;
 
-    // 이벤트 바인딩
-    container.querySelectorAll('.fm429-pl-toggle-btn').forEach(btn => {
+    // ── 그룹 토글 ──
+    container.querySelectorAll('.fm429-pl-group-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const id = btn.dataset.listId;
-            plOpenId = (plOpenId === id) ? null : id;
+            const id = btn.dataset.groupId;
+            plOpenGroupId = (plOpenGroupId === id) ? null : id;
+            if (plOpenGroupId !== id) plOpenListId = null;
             renderPlaylists();
         });
     });
 
-    container.querySelectorAll('.fm429-pl-del-list-btn').forEach(btn => {
+    // ── 그룹 삭제 ──
+    container.querySelectorAll('.fm429-pl-del-group-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (!confirm(t('plDeleteListConfirm'))) return;
-            const id = btn.dataset.listId;
+            if (!confirm(t('plDeleteGroupConfirm'))) return;
+            const id = btn.dataset.groupId;
             const s = getSettings();
-            s.playlists = s.playlists.filter(l => l.id !== id);
-            if (plOpenId === id) plOpenId = null;
+            s.groups = s.groups.filter(g => g.id !== id);
+            if (plOpenGroupId === id) { plOpenGroupId = null; plOpenListId = null; }
             saveSettingsDebounced();
             renderPlaylists();
         });
     });
 
+    // ── 리스트 토글 ──
+    container.querySelectorAll('.fm429-pl-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.listId;
+            plOpenListId = (plOpenListId === id) ? null : id;
+            renderPlaylists();
+        });
+    });
+
+    // ── 리스트 삭제 ──
+    container.querySelectorAll('.fm429-pl-del-list-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!confirm(t('plDeleteListConfirm'))) return;
+            const gid = btn.dataset.groupId;
+            const lid = btn.dataset.listId;
+            const s = getSettings();
+            const group = s.groups.find(g => g.id === gid);
+            if (group) group.lists = group.lists.filter(l => l.id !== lid);
+            if (plOpenListId === lid) plOpenListId = null;
+            saveSettingsDebounced();
+            renderPlaylists();
+        });
+    });
+
+    // ── 아이템 삭제 ──
     container.querySelectorAll('.fm429-pl-del-item-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             if (!confirm(t('plDeleteItemConfirm'))) return;
-            const id = btn.dataset.listId;
+            const gid = btn.dataset.groupId;
+            const lid = btn.dataset.listId;
             const idx = parseInt(btn.dataset.idx);
             const s = getSettings();
-            const list = s.playlists.find(l => l.id === id);
+            const group = s.groups.find(g => g.id === gid);
+            const list = group?.lists.find(l => l.id === lid);
             if (list) list.items.splice(idx, 1);
             saveSettingsDebounced();
             renderPlaylists();
         });
     });
 
+    // ── 아이템 재생 ──
     container.querySelectorAll('.fm429-pl-play-item').forEach(btn => {
         btn.addEventListener('click', () => {
             const url = btn.dataset.url;
@@ -702,7 +777,6 @@ function renderPlaylists() {
             if (!vid) { toastr.warning(t('badUrl'), 'FM 42.9'); return; }
             getSettings().last_url = url;
             saveSettingsDebounced();
-            // PLAY 탭으로 이동 후 재생
             $('.fm429-tab').removeClass('active');
             $('.fm429-tab-pane').removeClass('active');
             $('[data-tab="play"]').addClass('active');
@@ -711,29 +785,53 @@ function renderPlaylists() {
         });
     });
 
+    // ── 아이템 추가 ──
     container.querySelectorAll('.fm429-pl-add-item-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const id = btn.dataset.listId;
+            const gid = btn.dataset.groupId;
+            const lid = btn.dataset.listId;
             const row = btn.closest('.fm429-pl-add-item-row');
             const url  = row.querySelector('.fm429-pl-url-input').value.trim();
             const memo = row.querySelector('.fm429-pl-memo-input').value.trim();
             if (!url) { toastr.warning(t('plNoUrl'), 'FM 42.9'); return; }
             const s = getSettings();
-            const list = s.playlists.find(l => l.id === id);
+            const group = s.groups.find(g => g.id === gid);
+            const list = group?.lists.find(l => l.id === lid);
             if (list) list.items.push({ url, memo });
             saveSettingsDebounced();
             renderPlaylists();
         });
     });
 
-    container.querySelector('.fm429-pl-add-list-btn')?.addEventListener('click', () => {
-        const input = container.querySelector('.fm429-pl-new-name');
+    // ── 리스트 추가 ──
+    container.querySelectorAll('.fm429-pl-add-list-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const gid = btn.dataset.groupId;
+            const row = btn.closest('.fm429-pl-new-list-row');
+            const input = row.querySelector('.fm429-pl-new-name');
+            const name = input.value.trim();
+            if (!name) return;
+            const s = getSettings();
+            const group = s.groups.find(g => g.id === gid);
+            if (!group) return;
+            const id = 'lst_' + Date.now();
+            group.lists.push({ id, name, items: [] });
+            plOpenListId = id;
+            saveSettingsDebounced();
+            renderPlaylists();
+        });
+    });
+
+    // ── 그룹 추가 ──
+    container.querySelector('.fm429-pl-add-group-btn')?.addEventListener('click', () => {
+        const input = container.querySelector('.fm429-pl-new-group-name');
         const name = input.value.trim();
         if (!name) return;
         const s = getSettings();
-        const id = 'pl_' + Date.now();
-        s.playlists.push({ id, name, items: [] });
-        plOpenId = id;
+        const id = 'grp_' + Date.now();
+        s.groups.push({ id, name, lists: [] });
+        plOpenGroupId = id;
+        plOpenListId = null;
         saveSettingsDebounced();
         renderPlaylists();
     });
