@@ -147,14 +147,25 @@ async function callLLM(prompt) {
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
+    // ── toastr 알림 임시 억제 헬퍼 ───────────────────────────────
+    function suppressToastr() {
+        const noop = () => ({ onShown: noop, onHidden: noop, onCloseClick: noop });
+        const original = {};
+        ['success', 'info', 'warning', 'error'].forEach(k => {
+            original[k] = window.toastr[k];
+            window.toastr[k] = noop;
+        });
+        return () => {
+            ['success', 'info', 'warning', 'error'].forEach(k => {
+                window.toastr[k] = original[k];
+            });
+        };
+    }
+
     // ── 전환 전 상태 스냅샷 ───────────────────────────────────────
-    // 1) connectionManager의 현재 selectedProfile ID (드롭다운 복귀용)
     const mgr = extension_settings?.connectionManager;
     const previousSelectedId = mgr?.selectedProfile ?? null;
 
-    // 2) 실제 API 설정값을 슬래시 커맨드로 직접 읽기
-    //    api-url은 Chat Completion(openai)에서 설정 불가 → 복귀 커맨드 목록에서 제외
-    //    api는 2번 읽으면 중복되니 1번만
     const SNAPSHOT_COMMANDS = ['api', 'model', 'preset', 'proxy',
         'stop-strings', 'start-reply-with', 'reasoning-template',
         'prompt-post-processing'];
@@ -174,7 +185,8 @@ async function callLLM(prompt) {
     }
     console.log('[FM 42.9] 스냅샷:', snapshot, '/ 이전 프로필 ID:', previousSelectedId);
 
-    // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
+    // ── ① 사연 생성용 프로필로 전환 (알림 억제) ─────────────────
+    const restoreToastr1 = suppressToastr();
     try {
         await context.executeSlashCommandsWithOptions(
             `/profile ${selectedProfile}`,
@@ -182,7 +194,10 @@ async function callLLM(prompt) {
         );
     } catch (e) {
         console.warn('[FM 42.9] 프로필 전환 실패:', e);
+        restoreToastr1();
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
+    } finally {
+        restoreToastr1();
     }
 
     // ── ② 사연 생성 → ③ 완료 후 스냅샷으로 원상복귀 ────────────
@@ -190,9 +205,9 @@ async function callLLM(prompt) {
     try {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
+        const restoreToastr2 = suppressToastr();
         try {
             console.log('[FM 42.9] 복귀 시작');
-            // API 설정값 복원
             for (const cmd of SNAPSHOT_COMMANDS) {
                 if (!snapshot[cmd]) continue;
                 try {
@@ -202,17 +217,16 @@ async function callLLM(prompt) {
                     );
                 } catch (_) {}
             }
-            // 드롭다운(selectedProfile) 복원 — UI만 원래 상태로
+            // 드롭다운 UI 복원
             if (mgr) {
                 mgr.selectedProfile = previousSelectedId;
-                // 드롭다운 DOM도 동기화
                 const profilesEl = document.getElementById('connection_profiles');
-                if (profilesEl) {
-                    profilesEl.value = previousSelectedId ?? '';
-                }
+                if (profilesEl) profilesEl.value = previousSelectedId ?? '';
             }
             console.log('[FM 42.9] 복귀 완료');
-        } catch (_) {}
+        } finally {
+            restoreToastr2();
+        }
     }
     return result || '';
 }
