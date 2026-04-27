@@ -147,17 +147,27 @@ async function callLLM(prompt) {
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
-    // ── 현재 프로필 이름 읽기 ─────────────────────────────────────
-    // extension_settings.connectionManager.selectedProfile = 현재 활성 프로필의 UUID 또는 null
-    // null이면 <None> 상태. UUID를 profiles 배열에서 찾아 name을 꺼낸다.
-    const mgr = extension_settings?.connectionManager;
-    const currentId = mgr?.selectedProfile ?? null;  // null = <None>
-    let previousProfileName = null;  // null = <None> 상태
-    if (currentId && Array.isArray(mgr?.profiles)) {
-        const found = mgr.profiles.find(p => p.id === currentId);
-        previousProfileName = found?.name ?? null;
+    // ── 전환 전 현재 API 설정 스냅샷 ─────────────────────────────
+    // /profile <None> 은 설정을 복원하지 않으므로, 슬래시 커맨드로 현재 값을 직접 읽어 저장한다.
+    // connection-manager의 CC_COMMANDS 순서와 동일하게 읽음.
+    const SNAPSHOT_COMMANDS = ['api', 'api-url', 'model', 'preset', 'proxy',
+        'stop-strings', 'start-reply-with', 'reasoning-template',
+        'prompt-post-processing', 'secret-id'];
+    const snapshot = {};
+
+    if (context.executeSlashCommandsWithOptions) {
+        for (const cmd of SNAPSHOT_COMMANDS) {
+            try {
+                const res = await context.executeSlashCommandsWithOptions(
+                    `/${cmd}`,
+                    { showOutput: false }
+                );
+                const val = res?.pipe ?? res?.result ?? null;
+                if (val !== null && val !== undefined) snapshot[cmd] = val;
+            } catch (_) {}
+        }
     }
-    console.log(`[FM 42.9] 현재 프로필: "${previousProfileName ?? '<None>'}" (id: ${currentId}) → 사연 프로필: "${selectedProfile}"`);
+    console.log('[FM 42.9] 스냅샷:', snapshot);
 
     // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
     try {
@@ -170,21 +180,23 @@ async function callLLM(prompt) {
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
-    // ── ② 사연 생성 → ③ 완료 후 반드시 원래 프로필로 복귀 ────────
-    // previousProfileName이 null → <None> 선택 상태였던 것 → "/profile <None>" 으로 복귀
-    // (ST 소스의 NONE 상수 = '<None>')
-    const restoreCmd = previousProfileName
-        ? `/profile ${previousProfileName}`
-        : `/profile <None>`;
-
+    // ── ② 사연 생성 → ③ 완료 후 스냅샷으로 원상복귀 ────────────
     let result = '';
     try {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
         try {
-            console.log(`[FM 42.9] 프로필 복귀 시도: "${previousProfileName ?? '<None>'}"`);
-            await context.executeSlashCommandsWithOptions(restoreCmd, { showOutput: false });
-            console.log(`[FM 42.9] 프로필 복귀 완료`);
+            console.log('[FM 42.9] 스냅샷으로 복귀 시작');
+            for (const cmd of SNAPSHOT_COMMANDS) {
+                if (snapshot[cmd] === undefined) continue;
+                try {
+                    await context.executeSlashCommandsWithOptions(
+                        `/${cmd} ${snapshot[cmd]}`,
+                        { showOutput: false }
+                    );
+                } catch (_) {}
+            }
+            console.log('[FM 42.9] 복귀 완료');
         } catch (_) {}
     }
     return result || '';
