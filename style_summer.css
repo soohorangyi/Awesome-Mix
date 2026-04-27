@@ -349,8 +349,16 @@
     padding: 7px 10px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 7px;
     background: var(--off);
+}
+.fm429-footer-left {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 1;
+    min-width: 0;
 }
 .fm429-footer-label {
     font-family: var(--font);
@@ -400,7 +408,6 @@
 
 /* ── Pause button ── */
 .fm429-pause-btn {
-    margin-left: auto;
     padding: 3px 8px;
     font-size: 11px;
     flex-shrink: 0;
