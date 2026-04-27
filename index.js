@@ -147,21 +147,17 @@ async function callLLM(prompt) {
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
-    // ── 현재 프로필 이름을 /profile 커맨드로 직접 읽어옴 ──────────
-    // /profile (인자 없이) → 현재 프로필 이름을 반환, <None>이면 빈 문자열
-    let previousProfileName = null; // null = <None> 상태
-    try {
-        if (context.executeSlashCommandsWithOptions) {
-            const res = await context.executeSlashCommandsWithOptions(
-                '/profile',
-                { showOutput: false }
-            );
-            // 반환값이 있고 빈 문자열이 아니면 실제 프로필 이름
-            const name = (res?.pipe ?? res?.result ?? '').trim();
-            previousProfileName = name || null;
-        }
-        console.log(`[FM 42.9] 현재 프로필: "${previousProfileName ?? '<None>'}" → 사연 프로필: "${selectedProfile}"`);
-    } catch (_) {}
+    // ── 현재 프로필 이름 읽기 ─────────────────────────────────────
+    // extension_settings.connectionManager.selectedProfile = 현재 활성 프로필의 UUID 또는 null
+    // null이면 <None> 상태. UUID를 profiles 배열에서 찾아 name을 꺼낸다.
+    const mgr = extension_settings?.connectionManager;
+    const currentId = mgr?.selectedProfile ?? null;  // null = <None>
+    let previousProfileName = null;  // null = <None> 상태
+    if (currentId && Array.isArray(mgr?.profiles)) {
+        const found = mgr.profiles.find(p => p.id === currentId);
+        previousProfileName = found?.name ?? null;
+    }
+    console.log(`[FM 42.9] 현재 프로필: "${previousProfileName ?? '<None>'}" (id: ${currentId}) → 사연 프로필: "${selectedProfile}"`);
 
     // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
     try {
@@ -175,20 +171,20 @@ async function callLLM(prompt) {
     }
 
     // ── ② 사연 생성 → ③ 완료 후 반드시 원래 프로필로 복귀 ────────
+    // previousProfileName이 null → <None> 선택 상태였던 것 → "/profile <None>" 으로 복귀
+    // (ST 소스의 NONE 상수 = '<None>')
+    const restoreCmd = previousProfileName
+        ? `/profile ${previousProfileName}`
+        : `/profile <None>`;
+
     let result = '';
     try {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
         try {
-            // previousProfileName이 null이면 <None> 상태였던 것
-            const restoreCmd = previousProfileName
-                ? `/profile ${previousProfileName}`
-                : `/profile <None>`;
-            console.log(`[FM 42.9] 프로필 복귀: "${previousProfileName ?? '<None>'}"`);
-            await context.executeSlashCommandsWithOptions(
-                restoreCmd,
-                { showOutput: false }
-            );
+            console.log(`[FM 42.9] 프로필 복귀 시도: "${previousProfileName ?? '<None>'}"`);
+            await context.executeSlashCommandsWithOptions(restoreCmd, { showOutput: false });
+            console.log(`[FM 42.9] 프로필 복귀 완료`);
         } catch (_) {}
     }
     return result || '';
