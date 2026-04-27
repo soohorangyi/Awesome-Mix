@@ -147,52 +147,45 @@ async function callLLM(prompt) {
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
-    // ── 현재(메인) 프로필 이름 캐싱 ──────────────────────────────
-    // selectedProfile은 UUID로 저장 → id 매칭으로 이름을 찾음
-    // 메인이 <None> 상태면 selectedProfile이 없으므로 previousProfile = null
-    // 복귀 시 null이면 /profile <None> 으로 해제
-    let previousProfile = null;
-    try {
-        const mgr = extension_settings?.connectionManager;
-        const profiles = mgr?.profiles;
-        if (Array.isArray(profiles) && mgr?.selectedProfile) {
-            const current = profiles.find(p => p.id === mgr.selectedProfile);
-            previousProfile = current?.name ?? null;
-        }
-        console.log(`[FM 42.9] 메인 프로필: "${previousProfile ?? '<None>'}" → 사연 생성 프로필: "${selectedProfile}"`);
-    } catch (_) {}
+    // ── 현재 selectedProfile ID를 직접 저장 (이름 변환 없이) ──────
+    // extension_settings.connectionManager.selectedProfile 은 현재 활성 프로필 ID
+    // <None> 상태이면 null / undefined → 그대로 null로 보존
+    const mgr = extension_settings?.connectionManager;
+    const previousProfileId = mgr?.selectedProfile ?? null;
+    console.log(`[FM 42.9] 현재 프로필 ID: "${previousProfileId ?? '<None>'}" → 사연 프로필: "${selectedProfile}"`);
 
-    // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
-    try {
-        if (context.executeSlashCommandsWithOptions) {
-            await context.executeSlashCommandsWithOptions(
-                `/profile ${selectedProfile}`,
-                { showOutput: false }
-            );
+    // ── ① 사연 생성용 프로필로 전환 (슬래시 커맨드 대신 직접 API 호출) ──
+    async function applyProfile(profileId) {
+        // connectionManager 확장이 제공하는 loadProfile 함수를 우선 시도
+        const cmExt = window.SillyTavern?.getContext()?.extensionSettings?.connectionManager
+                   ?? extension_settings?.connectionManager;
+        if (typeof cmExt?.loadProfile === 'function') {
+            await cmExt.loadProfile(profileId);
+            return;
         }
+        // fallback: 슬래시 커맨드
+        if (context.executeSlashCommandsWithOptions) {
+            const cmd = profileId ? `/profile ${profileId}` : `/profile`;
+            await context.executeSlashCommandsWithOptions(cmd, { showOutput: false });
+        }
+    }
+
+    try {
+        await applyProfile(selectedProfile);
     } catch (e) {
         console.warn('[FM 42.9] 프로필 전환 실패:', e);
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
-    // ── ② 사연 생성 → ③ 완료 후 반드시 메인 프로필로 복귀 ───────
+    // ── ② 사연 생성 → ③ 완료 후 반드시 이전 프로필 ID로 복귀 ────
     let result = '';
     try {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
-        if (context.executeSlashCommandsWithOptions) {
-            // previousProfile이 null이면 메인이 <None> 상태였던 것 → <None>으로 복귀
-            const restoreCmd = previousProfile
-                ? `/profile ${previousProfile}`
-                : `/profile <None>`;
-            try {
-                console.log(`[FM 42.9] 프로필 복귀: "${previousProfile ?? '<None>'}"`);
-                await context.executeSlashCommandsWithOptions(
-                    restoreCmd,
-                    { showOutput: false }
-                );
-            } catch (_) {}
-        }
+        try {
+            console.log(`[FM 42.9] 프로필 복귀: "${previousProfileId ?? '<None>'}"`);
+            await applyProfile(previousProfileId);
+        } catch (_) {}
     }
     return result || '';
 }
