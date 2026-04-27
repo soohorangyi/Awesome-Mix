@@ -147,12 +147,17 @@ async function callLLM(prompt) {
         return (await context.generateRaw(prompt, null, false, false, '')) || '';
     }
 
-    // ── 전환 전 현재 API 설정 스냅샷 ─────────────────────────────
-    // /profile <None> 은 설정을 복원하지 않으므로, 슬래시 커맨드로 현재 값을 직접 읽어 저장한다.
-    // connection-manager의 CC_COMMANDS 순서와 동일하게 읽음.
-    const SNAPSHOT_COMMANDS = ['api', 'api-url', 'model', 'preset', 'proxy',
+    // ── 전환 전 상태 스냅샷 ───────────────────────────────────────
+    // 1) connectionManager의 현재 selectedProfile ID (드롭다운 복귀용)
+    const mgr = extension_settings?.connectionManager;
+    const previousSelectedId = mgr?.selectedProfile ?? null;
+
+    // 2) 실제 API 설정값을 슬래시 커맨드로 직접 읽기
+    //    api-url은 Chat Completion(openai)에서 설정 불가 → 복귀 커맨드 목록에서 제외
+    //    api는 2번 읽으면 중복되니 1번만
+    const SNAPSHOT_COMMANDS = ['api', 'model', 'preset', 'proxy',
         'stop-strings', 'start-reply-with', 'reasoning-template',
-        'prompt-post-processing', 'secret-id'];
+        'prompt-post-processing'];
     const snapshot = {};
 
     if (context.executeSlashCommandsWithOptions) {
@@ -162,12 +167,12 @@ async function callLLM(prompt) {
                     `/${cmd}`,
                     { showOutput: false }
                 );
-                const val = res?.pipe ?? res?.result ?? null;
-                if (val !== null && val !== undefined) snapshot[cmd] = val;
+                const val = (res?.pipe ?? res?.result ?? '').toString().trim();
+                if (val) snapshot[cmd] = val;
             } catch (_) {}
         }
     }
-    console.log('[FM 42.9] 스냅샷:', snapshot);
+    console.log('[FM 42.9] 스냅샷:', snapshot, '/ 이전 프로필 ID:', previousSelectedId);
 
     // ── ① 사연 생성용 프로필로 전환 ─────────────────────────────
     try {
@@ -186,15 +191,25 @@ async function callLLM(prompt) {
         result = await context.generateRaw(prompt, null, false, false, '');
     } finally {
         try {
-            console.log('[FM 42.9] 스냅샷으로 복귀 시작');
+            console.log('[FM 42.9] 복귀 시작');
+            // API 설정값 복원
             for (const cmd of SNAPSHOT_COMMANDS) {
-                if (snapshot[cmd] === undefined) continue;
+                if (!snapshot[cmd]) continue;
                 try {
                     await context.executeSlashCommandsWithOptions(
                         `/${cmd} ${snapshot[cmd]}`,
                         { showOutput: false }
                     );
                 } catch (_) {}
+            }
+            // 드롭다운(selectedProfile) 복원 — UI만 원래 상태로
+            if (mgr) {
+                mgr.selectedProfile = previousSelectedId;
+                // 드롭다운 DOM도 동기화
+                const profilesEl = document.getElementById('connection_profiles');
+                if (profilesEl) {
+                    profilesEl.value = previousSelectedId ?? '';
+                }
             }
             console.log('[FM 42.9] 복귀 완료');
         } catch (_) {}
