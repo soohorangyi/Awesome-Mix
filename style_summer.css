@@ -305,7 +305,6 @@
     border-radius: 0 2px 2px 0;
 }
 .fm429-card-from { font-family:var(--font); font-size:12px; color:var(--text); margin-bottom:5px; }
-.fm429-card-body { font-family:var(--font); font-size:10px; color:var(--text-dim); line-height:1.75; }
 .fm429-card-dj {
     margin-top: 7px;
     padding-top: 6px;
@@ -384,4 +383,157 @@
     outline: none;
     display: none;
 }
-.fm429-footer-custom.show { display: block; }
+/* ── Card body scroll ── */
+.fm429-card-body {
+    font-family: var(--font);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.75;
+    max-height: 120px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-mid) transparent;
+}
+.fm429-card-body::-webkit-scrollbar { width: 4px; }
+.fm429-card-body::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 2px; }
+.fm429-card-body::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Pause button ── */
+.fm429-pause-btn {
+    margin-left: auto;
+    padding: 3px 8px;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+.fm429-pause-btn.paused {
+    border-color: var(--c3);
+    color: var(--c3);
+    background: rgba(66,122,181,0.08);
+}
+
+/* ── Playlist pane ── */
+.fm429-pl-list {
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--white);
+}
+.fm429-pl-list-header {
+    display: flex;
+    align-items: center;
+    background: var(--off);
+    border-bottom: 1px solid var(--border);
+}
+.fm429-pl-toggle-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 11px;
+    color: var(--text);
+    text-align: left;
+}
+.fm429-pl-toggle-btn:hover { color: var(--c4); }
+.fm429-pl-arrow { font-size: 10px; color: var(--text-muted); }
+.fm429-pl-list-name { flex: 1; }
+.fm429-pl-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    background: var(--border);
+    border-radius: 8px;
+    padding: 1px 6px;
+}
+.fm429-pl-del-list-btn {
+    padding: 6px 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.fm429-pl-del-list-btn:hover { color: var(--c4); }
+
+.fm429-pl-items { padding: 6px 8px 4px; }
+.fm429-pl-empty-items {
+    font-family: var(--font);
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 4px 2px 6px;
+}
+.fm429-pl-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border);
+}
+.fm429-pl-item:last-of-type { border-bottom: none; }
+.fm429-pl-play-item {
+    background: var(--off);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 7px;
+    font-size: 10px;
+    color: var(--c3);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+.fm429-pl-play-item:hover { background: var(--c3); color: var(--white); }
+.fm429-pl-item-info { flex: 1; min-width: 0; }
+.fm429-pl-item-url {
+    font-family: var(--font);
+    font-size: 9px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fm429-pl-item-memo {
+    font-family: var(--font);
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fm429-pl-del-item-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    padding: 2px 4px;
+}
+.fm429-pl-del-item-btn:hover { color: var(--c4); }
+
+.fm429-pl-add-item-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 0 2px;
+}
+.fm429-pl-add-item-row .fm429-btn {
+    align-self: flex-end;
+    padding: 4px 10px;
+    font-size: 10px;
+}
+
+.fm429-pl-new-row {
+    display: flex;
+    gap: 5px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+}
+.fm429-pl-new-row .fm429-btn { flex-shrink: 0; font-size: 10px; padding: 6px 8px; }
+
