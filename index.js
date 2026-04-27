@@ -153,7 +153,7 @@ async function callLLM(prompt) {
     // 복귀 시 null이면 /profile <None> 으로 해제
     let previousProfile = null;
     try {
-        const mgr = context.extensionSettings?.connectionManager;
+        const mgr = extension_settings?.connectionManager;
         const profiles = mgr?.profiles;
         if (Array.isArray(profiles) && mgr?.selectedProfile) {
             const current = profiles.find(p => p.id === mgr.selectedProfile);
