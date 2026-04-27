@@ -81,6 +81,7 @@ const I18N = {
         plEmptyLists:   '리스트 없음',
         plEmptyItems:   '항목 없음',
     },
+    en: {
         standby:        'STANDBY · FM 42.9',
         onair:          'ON AIR',
         urlPlaceholder: 'youtu.be/... or youtube.com/watch?v=...',
@@ -129,6 +130,7 @@ const I18N = {
         plEmptyLists:   'No lists',
         plEmptyItems:   'No items',
     },
+};
 
 function t(key) {
     const lang = getSettings().language || 'ko';
