@@ -20,6 +20,8 @@ const defaultSettings = {
     apiProfile: '',
     position: 'left',   // 'left' | 'right'
     language: 'ko',     // 'ko' | 'en'
+    saeyon_paused: false,
+    playlists: [],      // [{ id, name, items: [{ url, memo }] }]
 };
 
 let isPlaying = false;
@@ -55,6 +57,22 @@ const I18N = {
         profileHint:    '별도 프로필을 지정하면 사연 생성 시 해당 프로필로 일시 전환 후<br>자동으로 원래 프로필로 복귀합니다.<br>지정하지 않으면 현재 메인 프로필을 그대로 사용합니다.',
         langLabel:      '사연 언어',
         badUrl:         '올바른 YouTube URL을 입력해주세요.',
+        pauseLabel:     '사연 일시정지',
+        resumeLabel:    '사연 재개',
+        pausedBadge:    '⏸ 일시정지 중',
+        plTab:          '📋 목록',
+        plNewName:      '새 리스트 이름',
+        plAddList:      '+ 리스트 추가',
+        plEmpty:        '플레이리스트가 없어요.<br>아래에서 새 리스트를 만들어보세요.',
+        plUrlPlaceholder: 'YouTube URL',
+        plMemoPlaceholder: '메모 (선택)',
+        plAddItem:      '추가',
+        plDeleteItem:   '삭제',
+        plDeleteList:   '목록 삭제',
+        plDeleteListConfirm: '이 리스트를 삭제할까요?',
+        plDeleteItemConfirm: '이 항목을 삭제할까요?',
+        plPlay:         '▶',
+        plNoUrl:        'URL을 입력해주세요.',
     },
     en: {
         standby:        'STANDBY · FM 42.9',
@@ -82,6 +100,22 @@ const I18N = {
         profileHint:    'When set, FM 42.9 temporarily switches to this profile for letter generation, then restores the original.<br>Leave blank to use the current profile.',
         langLabel:      'Letter language',
         badUrl:         'Please enter a valid YouTube URL.',
+        pauseLabel:     'Pause letters',
+        resumeLabel:    'Resume letters',
+        pausedBadge:    '⏸ Paused',
+        plTab:          '📋 Lists',
+        plNewName:      'New list name',
+        plAddList:      '+ Add list',
+        plEmpty:        'No playlists yet.<br>Create one below.',
+        plUrlPlaceholder: 'YouTube URL',
+        plMemoPlaceholder: 'Memo (optional)',
+        plAddItem:      'Add',
+        plDeleteItem:   'Delete',
+        plDeleteList:   'Delete list',
+        plDeleteListConfirm: 'Delete this list?',
+        plDeleteItemConfirm: 'Delete this item?',
+        plPlay:         '▶',
+        plNoUrl:        'Please enter a URL.',
     },
 };
 
@@ -551,12 +585,158 @@ function showSaeyonNotification() {
 function onMessageReceived() {
     const s = getSettings();
     if (!s.enabled) return;
+    if (s.saeyon_paused) return;
     s.message_counter = (s.message_counter || 0) + 1;
     if (s.message_counter >= getEffectiveInterval()) {
         s.message_counter = 0;
         generateSaeyon();
     }
     saveSettingsDebounced();
+}
+
+// ── Pause UI ──────────────────────────────────────────────────
+function updatePauseUI() {
+    const s = getSettings();
+    const btn = document.getElementById('fm429-pause-btn');
+    if (!btn) return;
+    btn.textContent = s.saeyon_paused ? '▶' : '⏸';
+    btn.title = s.saeyon_paused ? t('resumeLabel') : t('pauseLabel');
+    btn.classList.toggle('paused', !!s.saeyon_paused);
+}
+
+// ── Playlists ─────────────────────────────────────────────────
+let plOpenId = null; // 현재 펼쳐진 리스트 ID
+
+function renderPlaylists() {
+    const container = document.getElementById('fm429-pl-container');
+    if (!container) return;
+    const s = getSettings();
+    const lists = s.playlists || [];
+
+    let html = '';
+
+    if (lists.length === 0) {
+        html += `<div class="fm429-empty">${t('plEmpty')}</div>`;
+    } else {
+        lists.forEach(list => {
+            const open = plOpenId === list.id;
+            html += `
+            <div class="fm429-pl-list" data-list-id="${escapeHtml(list.id)}">
+                <div class="fm429-pl-list-header">
+                    <button class="fm429-pl-toggle-btn" data-list-id="${escapeHtml(list.id)}">
+                        <span class="fm429-pl-arrow">${open ? '▾' : '▸'}</span>
+                        <span class="fm429-pl-list-name">${escapeHtml(list.name)}</span>
+                        <span class="fm429-pl-count">${list.items.length}</span>
+                    </button>
+                    <button class="fm429-pl-del-list-btn" data-list-id="${escapeHtml(list.id)}" title="${t('plDeleteList')}">✕</button>
+                </div>
+                ${open ? `
+                <div class="fm429-pl-items">
+                    ${list.items.length === 0
+                        ? `<div class="fm429-pl-empty-items">항목 없음</div>`
+                        : list.items.map((item, idx) => `
+                    <div class="fm429-pl-item" data-list-id="${escapeHtml(list.id)}" data-idx="${idx}">
+                        <button class="fm429-pl-play-item" data-url="${escapeHtml(item.url)}" title="재생">${t('plPlay')}</button>
+                        <div class="fm429-pl-item-info">
+                            <div class="fm429-pl-item-url">${escapeHtml(item.url)}</div>
+                            ${item.memo ? `<div class="fm429-pl-item-memo">${escapeHtml(item.memo)}</div>` : ''}
+                        </div>
+                        <button class="fm429-pl-del-item-btn" data-list-id="${escapeHtml(list.id)}" data-idx="${idx}" title="${t('plDeleteItem')}">🗑</button>
+                    </div>`).join('')}
+                    <div class="fm429-pl-add-item-row" data-list-id="${escapeHtml(list.id)}">
+                        <input class="fm429-input fm429-pl-url-input" type="text" placeholder="${t('plUrlPlaceholder')}">
+                        <input class="fm429-input fm429-pl-memo-input" type="text" placeholder="${t('plMemoPlaceholder')}">
+                        <button class="fm429-btn primary fm429-pl-add-item-btn" data-list-id="${escapeHtml(list.id)}">${t('plAddItem')}</button>
+                    </div>
+                </div>` : ''}
+            </div>`;
+        });
+    }
+
+    html += `
+    <div class="fm429-pl-new-row">
+        <input class="fm429-input fm429-pl-new-name" type="text" placeholder="${t('plNewName')}">
+        <button class="fm429-btn primary fm429-pl-add-list-btn">${t('plAddList')}</button>
+    </div>`;
+
+    container.innerHTML = html;
+
+    // 이벤트 바인딩
+    container.querySelectorAll('.fm429-pl-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.listId;
+            plOpenId = (plOpenId === id) ? null : id;
+            renderPlaylists();
+        });
+    });
+
+    container.querySelectorAll('.fm429-pl-del-list-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!confirm(t('plDeleteListConfirm'))) return;
+            const id = btn.dataset.listId;
+            const s = getSettings();
+            s.playlists = s.playlists.filter(l => l.id !== id);
+            if (plOpenId === id) plOpenId = null;
+            saveSettingsDebounced();
+            renderPlaylists();
+        });
+    });
+
+    container.querySelectorAll('.fm429-pl-del-item-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!confirm(t('plDeleteItemConfirm'))) return;
+            const id = btn.dataset.listId;
+            const idx = parseInt(btn.dataset.idx);
+            const s = getSettings();
+            const list = s.playlists.find(l => l.id === id);
+            if (list) list.items.splice(idx, 1);
+            saveSettingsDebounced();
+            renderPlaylists();
+        });
+    });
+
+    container.querySelectorAll('.fm429-pl-play-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const url = btn.dataset.url;
+            const vid = extractVideoId(url);
+            if (!vid) { toastr.warning(t('badUrl'), 'FM 42.9'); return; }
+            getSettings().last_url = url;
+            saveSettingsDebounced();
+            // PLAY 탭으로 이동 후 재생
+            $('.fm429-tab').removeClass('active');
+            $('.fm429-tab-pane').removeClass('active');
+            $('[data-tab="play"]').addClass('active');
+            $('#fm429-pane-play').addClass('active');
+            loadYoutube(vid);
+        });
+    });
+
+    container.querySelectorAll('.fm429-pl-add-item-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.listId;
+            const row = btn.closest('.fm429-pl-add-item-row');
+            const url  = row.querySelector('.fm429-pl-url-input').value.trim();
+            const memo = row.querySelector('.fm429-pl-memo-input').value.trim();
+            if (!url) { toastr.warning(t('plNoUrl'), 'FM 42.9'); return; }
+            const s = getSettings();
+            const list = s.playlists.find(l => l.id === id);
+            if (list) list.items.push({ url, memo });
+            saveSettingsDebounced();
+            renderPlaylists();
+        });
+    });
+
+    container.querySelector('.fm429-pl-add-list-btn')?.addEventListener('click', () => {
+        const input = container.querySelector('.fm429-pl-new-name');
+        const name = input.value.trim();
+        if (!name) return;
+        const s = getSettings();
+        const id = 'pl_' + Date.now();
+        s.playlists.push({ id, name, items: [] });
+        plOpenId = id;
+        saveSettingsDebounced();
+        renderPlaylists();
+    });
 }
 
 // ── Panel HTML ────────────────────────────────────────────────
@@ -579,6 +759,7 @@ function buildPanelHTML() {
         <div class="fm429-tabs">
             <button class="fm429-tab active" data-tab="play">▶ PLAY</button>
             <button class="fm429-tab" data-tab="mail">✉ ${t('mailLabel')}</button>
+            <button class="fm429-tab" data-tab="pl">${t('plTab')}</button>
         </div>
 
         <div class="fm429-content">
@@ -612,6 +793,10 @@ function buildPanelHTML() {
                 </div>
                 <div id="fm429-cards-container"></div>
             </div>
+
+            <div class="fm429-tab-pane" id="fm429-pane-pl">
+                <div id="fm429-pl-container"></div>
+            </div>
         </div>
 
         <div class="fm429-footer">
@@ -625,6 +810,10 @@ function buildPanelHTML() {
             <input class="fm429-footer-custom ${s.saeyon_interval === 'custom' ? 'show' : ''}"
                    id="fm429-custom-interval" type="number" min="1" max="999"
                    value="${s.custom_interval || 10}">
+            <button class="fm429-btn fm429-pause-btn ${s.saeyon_paused ? 'paused' : ''}" id="fm429-pause-btn"
+                    title="${s.saeyon_paused ? t('resumeLabel') : t('pauseLabel')}">
+                ${s.saeyon_paused ? '▶' : '⏸'}
+            </button>
         </div>
     </div>`;
 }
@@ -696,6 +885,14 @@ function bindPanelEvents() {
         $(this).addClass('active');
         $(`#fm429-pane-${tab}`).addClass('active');
         if (tab === 'mail') renderCards();
+        if (tab === 'pl') renderPlaylists();
+    });
+
+    $('#fm429-pause-btn').on('click', () => {
+        const s = getSettings();
+        s.saeyon_paused = !s.saeyon_paused;
+        saveSettingsDebounced();
+        updatePauseUI();
     });
 
     $('#fm429-play-btn').on('click', () => {
