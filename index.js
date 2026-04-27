@@ -800,16 +800,18 @@ function buildPanelHTML() {
         </div>
 
         <div class="fm429-footer">
-            <span class="fm429-footer-label">${t('saeyonLabel')}</span>
-            <select class="fm429-select" id="fm429-interval-select">
-                <option value="5"      ${s.saeyon_interval == '5'      ? 'selected' : ''}>5 msg</option>
-                <option value="10"     ${s.saeyon_interval == '10'     ? 'selected' : ''}>10 msg</option>
-                <option value="20"     ${s.saeyon_interval == '20'     ? 'selected' : ''}>20 msg</option>
-                <option value="custom" ${s.saeyon_interval === 'custom' ? 'selected' : ''}>…</option>
-            </select>
-            <input class="fm429-footer-custom ${s.saeyon_interval === 'custom' ? 'show' : ''}"
-                   id="fm429-custom-interval" type="number" min="1" max="999"
-                   value="${s.custom_interval || 10}">
+            <div class="fm429-footer-left">
+                <span class="fm429-footer-label">${t('saeyonLabel')}</span>
+                <select class="fm429-select" id="fm429-interval-select">
+                    <option value="5"      ${s.saeyon_interval == '5'      ? 'selected' : ''}>5 msg</option>
+                    <option value="10"     ${s.saeyon_interval == '10'     ? 'selected' : ''}>10 msg</option>
+                    <option value="20"     ${s.saeyon_interval == '20'     ? 'selected' : ''}>20 msg</option>
+                    <option value="custom" ${s.saeyon_interval === 'custom' ? 'selected' : ''}>…</option>
+                </select>
+                <input class="fm429-footer-custom ${s.saeyon_interval === 'custom' ? 'show' : ''}"
+                       id="fm429-custom-interval" type="number" min="1" max="999"
+                       value="${s.custom_interval || 10}">
+            </div>
             <button class="fm429-btn fm429-pause-btn ${s.saeyon_paused ? 'paused' : ''}" id="fm429-pause-btn"
                     title="${s.saeyon_paused ? t('resumeLabel') : t('pauseLabel')}">
                 ${s.saeyon_paused ? '▶' : '⏸'}
